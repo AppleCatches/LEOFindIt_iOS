@@ -1,6 +1,7 @@
 // ---------------------------
 // File: ios/Runner/AppDelegate.swift
 // ---------------------------
+#if canImport(UIKit)
 import UIKit
 import Flutter
 import CoreBluetooth
@@ -38,3 +39,4 @@ import CoreBluetooth
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
+#endif

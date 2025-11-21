@@ -3,7 +3,28 @@
 // ---------------------------
 import Foundation
 import CoreBluetooth
+#if canImport(Flutter)
 import Flutter
+#else
+public typealias FlutterEventSink = (Any?) -> Void
+
+public class FlutterError: Error {
+  public var code: String?
+  public var message: String?
+  public var details: Any?
+
+  public init(_ code: String? = nil, _ message: String? = nil, _ details: Any? = nil) {
+    self.code = code
+    self.message = message
+    self.details = details
+  }
+}
+
+public protocol FlutterStreamHandler {
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError?
+  func onCancel(withArguments arguments: Any?) -> FlutterError?
+}
+#endif
 
 class BluetoothManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, FlutterStreamHandler {
   private var centralManager: CBCentralManager!
