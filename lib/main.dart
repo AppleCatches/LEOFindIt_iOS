@@ -43,6 +43,10 @@ class _ScanScreenState extends State<ScanScreen> {
   List<Map<String, dynamic>> devices = [];
   List<Map<String, dynamic>> savedDevices = []; // "marked as found"
 
+  // MOCK SCANNING SUPPORT (for iOS simulator)
+  Timer? mockTimer;
+  bool mockScanning = false;
+
   Future<void> startScan() async {
     devices.clear();
     setState(() {
@@ -65,24 +69,53 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Future<void> stopScan() async {
-    setState(() {
-      scanning = false;
-      bluetoothStatus = "Scan stopped";
-    });
+  setState(() {
+    scanning = false;
+    bluetoothStatus = "Scan stopped";
+  });
 
-    if (!testMode && Platform.isIOS) {
-      await platform.invokeMethod('stopScan');
-    }
+  // Stop mock scanning if simulator/test mode
+  if (mockScanning) {
+    mockScanning = false;
+    mockTimer?.cancel();
+    return;
   }
+
+  // Real iPhone scanning
+  if (!testMode && Platform.isIOS) {
+    await platform.invokeMethod('stopScan');
+  }
+}
+
 
   void _startMockScan() {
     // Fake BLE devices for testing without iPhone
-    devices = [
+    mockScanning = true;
+    devices.clear();
+    int counter = 0;
+
+    final mockList = [
       {"name": "Test AirTag", "id": "0001", "rssi": -50},
-      {"name": "Test Tile Tracker", "id": "0002", "rssi": -80},
-      {"name": "Test SmartTag", "id": "0003", "rssi": -65},
+      {"name": "Samsung SmartTag", "id": "0002", "rssi": -70},
+      {"name": "Tile Tracker", "id": "0003", "rssi": -80},
     ];
-    setState(() => bluetoothStatus = "Mock scan results (Testing)");
+
+    mockTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      if (!mockScanning) {
+        timer.cancel();
+        return;
+      }
+
+      if (counter < mockList.length) {
+        setState(() {
+          devices.add(mockList[counter]);
+          bluetoothStatus = "Mock scanning… found ${devices.length} device(s)";
+        });
+        counter++;
+      } else {
+        timer.cancel();
+      }
+    });
   }
 
   @override
@@ -129,7 +162,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (rssi >= -45) {
       return Icons.signal_wifi_4_bar; // very strong
-    } else if (rssi >= -60) { 
+    } else if (rssi >= -60) {
       return Icons.signal_wifi_3_bar; // strong
     } else if (rssi >= -75) {
       return Icons.signal_wifi_2_bar; // moderate
