@@ -28,12 +28,27 @@ import Foundation
   }
 #endif
 
-class BluetoothManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
+// Tracker Stats for Indirect AirTag Detection
+
+private struct TrackerStats {
+  var firstSeen: Date
+  var lastSeen: Date
+  var rssiSamples: [Int]
+  var isConnectable: Bool
+}
+
+class BluetoothManager: NSObject,
+  CBCentralManagerDelegate,
+  CBPeripheralDelegate,
   FlutterStreamHandler
 {
+
   private var centralManager: CBCentralManager!
   private var eventSink: FlutterEventSink?
+
   private var peripherals: [UUID: CBPeripheral] = [:]
+  private var trackerStats: [UUID: TrackerStats] = [:]
+
   private var wantsScan: Bool = false
 
   override init() {
@@ -45,52 +60,136 @@ class BluetoothManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     )
   }
 
-  // PUBLIC API FOR FLUTTER
+  // Public API Exposed to Flutter
 
   func startScan() {
     wantsScan = true
 
-    if centralManager.state == .poweredOn {
-      // discover any BLE devices
-      centralManager.scanForPeripherals(
-        withServices: nil,
-        options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+    // Start scan only when user presses Start.
+    // If Bluetooth isn't ready, do NOT auto-start later.
+    if centralManager.state != .poweredOn {
+      print("Bluetooth not powered on — cannot start scan.")
+      eventSink?(["type": "error", "code": "bluetooth_not_ready"])
+      return
     }
-    // else {
-    // Bluetooth not available
-    // }
+
+    centralManager.scanForPeripherals(
+      withServices: nil,
+      options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+    )
+    print("BLE scan started")
   }
 
   func stopScan() {
     wantsScan = false
     centralManager.stopScan()
+    print("BLE scan stopped")
   }
 
   func makeItSing(deviceId: String) {
-    // attempt to connect and make the device emit a sound
-    // implementation depends on the specific device and its services/characteristics
     guard let uuid = UUID(uuidString: deviceId),
       let peripheral = peripherals[uuid]
-    else {
-      return
-    }
+    else { return }
     centralManager.connect(peripheral, options: nil)
-    // Further implementation would be needed to discover services and write to characteristics
   }
 
-  // CBCentralManagerDelegate METHODS
+  // Update Stats for a Device
+
+  private func updateStats(
+    for peripheral: CBPeripheral,
+    advertisementData: [String: Any],
+    rssi: Int
+  ) -> TrackerStats {
+
+    let now = Date()
+    let uuid = peripheral.identifier
+    let isConnectable =
+      (advertisementData[CBAdvertisementDataIsConnectable] as? NSNumber)?.boolValue ?? false
+
+    if var stats = trackerStats[uuid] {
+      stats.lastSeen = now
+      stats.rssiSamples.append(rssi)
+      if stats.rssiSamples.count > 50 {
+        stats.rssiSamples.removeFirst()  // prevent unbounded growth
+      }
+      stats.isConnectable = stats.isConnectable || isConnectable
+      trackerStats[uuid] = stats
+      return stats
+    } else {
+      let stats = TrackerStats(
+        firstSeen: now,
+        lastSeen: now,
+        rssiSamples: [rssi],
+        isConnectable: isConnectable
+      )
+      trackerStats[uuid] = stats
+      return stats
+    }
+  }
+
+  // Indirect AirTag / Tracker Suspicion Score (0.0 – 1.0)
+
+  private func computeSuspicionScore(stats: TrackerStats, name: String?) -> Double {
+    var score: Double = 0.0
+
+    // 1) Unknown / empty name → more suspicious
+    if name == nil || name == "Unknown" || name?.isEmpty == true {
+      score += 0.3
+    }
+
+    // 2) Non-connectable beacon → like AirTag / Find My accessory
+    if stats.isConnectable == false {
+      score += 0.3
+    }
+
+    // 3) Seen for a while (persistent nearby presence)
+    let duration = stats.lastSeen.timeIntervalSince(stats.firstSeen)
+    if duration > 5 * 60 {  // > 5 minutes
+      score += 0.2
+    }
+    if duration > 10 * 60 {  // > 10 minutes
+      score += 0.1
+    }
+
+    // 4) RSSI stability (device "following" you, not jumping around)
+    let values = stats.rssiSamples
+    if values.count >= 3 {
+      let mean = Double(values.reduce(0, +)) / Double(values.count)
+      let variance =
+        values.map { pow(Double($0) - mean, 2.0) }
+        .reduce(0.0, +) / Double(values.count)
+      let stdDev = sqrt(variance)
+
+      // Typical "following distance" range and stability
+      if mean > -80 && mean < -30 && stdDev < 10 {
+        score += 0.2
+      }
+    }
+
+    // Clamp to [0,1]
+    return min(1.0, max(0.0, score))
+  }
+
+  // MARK: - CBCentralManagerDelegate
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
-    // Handle Bluetooth state updates
     switch central.state {
     case .poweredOn:
-      if wantsScan {
-        central.scanForPeripherals(
-          withServices: nil,
-          options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
-      }
-    default:
-      central.stopScan()
+      print("Bluetooth is ON")
+    // Do NOT auto-start scanning — only when StartScan is pressed
+    case .poweredOff:
+      print("Bluetooth is OFF")
+      centralManager.stopScan()
+    case .resetting:
+      print("Bluetooth resetting")
+    case .unauthorized:
+      print("Bluetooth unauthorized")
+    case .unsupported:
+      print("Bluetooth unsupported")
+    case .unknown:
+      print("Bluetooth state unknown")
+    @unknown default:
+      print("Bluetooth state unknown (future case)")
     }
   }
 
@@ -100,14 +199,37 @@ class BluetoothManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     advertisementData: [String: Any],
     rssi RSSI: NSNumber
   ) {
+    let rssiValue = RSSI.intValue
+    if rssiValue == 127 { return }  // invalid RSSI
 
     peripherals[peripheral.identifier] = peripheral
     let name = peripheral.name ?? "Unknown"
+
+    let stats = updateStats(
+      for: peripheral,
+      advertisementData: advertisementData,
+      rssi: rssiValue
+    )
+
+    let suspicionScore = computeSuspicionScore(stats: stats, name: peripheral.name)
+    let probability = Int(suspicionScore * 100.0)
+    let isSuspicious = suspicionScore >= 0.6
+
+    let seenDuration = Int(stats.lastSeen.timeIntervalSince(stats.firstSeen))
+
     let device: [String: Any] = [
+      "type": "device",
       "name": name,
       "id": peripheral.identifier.uuidString,
-      "rssi": RSSI.intValue,
+      "rssi": rssiValue,
+      "airTagScore": suspicionScore,
+      "probability": probability,
+      "isSuspicious": isSuspicious,
+      "isConnectable": stats.isConnectable,
+      "seenSeconds": seenDuration,
+      "sampleCount": stats.rssiSamples.count,
     ]
+
     eventSink?(device)
   }
 
@@ -128,26 +250,19 @@ class BluetoothManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     didDiscoverCharacteristicsFor service: CBService,
     error: Error?
   ) {
-    guard error == nil else { return }
-    // Here you would write to the characteristic that makes the device emit a sound
-    // This is device-specific and requires knowledge of the device's GATT profile
   }
 
-  // FlutterStreamHandler METHODS
+  // FlutterStreamHandler
 
   func onListen(
     withArguments arguments: Any?,
     eventSink events: @escaping FlutterEventSink
-  )
-    -> FlutterError?
-  {
+  ) -> FlutterError? {
     self.eventSink = events
     return nil
   }
 
-  func onCancel(withArguments arguments: Any?)
-    -> FlutterError?
-  {
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
     eventSink = nil
     return nil
   }
