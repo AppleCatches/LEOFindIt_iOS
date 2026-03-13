@@ -4,6 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -37,7 +39,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>LEOFindIt needs location access to detect nearby Bluetooth trackers.</string>
 	<key>Privacy - Accessory Tracking Usage Description</key>
-	<string>This helps comply with Apple's accessory tracking rules.</string>
+	<string>This helps comply with Apple&apos;s accessory tracking rules.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
