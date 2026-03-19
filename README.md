@@ -58,8 +58,8 @@ cd ios<br>
 pod install<br>
 cd ..
 
-Restart Xcode after pod install
-open ios/Runner.xcworkspace
+Restart Xcode after cd ..<br>
+Open ios/Runner.xcworkspace
 
 ## Running the App
 
