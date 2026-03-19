@@ -50,7 +50,7 @@ Tools - Xcode, VS Code, GitHub
 
 ## Installation
 
-git clone https://github.com/yourusername/LEOFindIt_iOS.git<br>
+git clone https://github.com/AppleCatches/LEOFindIt_iOS.git<br>
 cd LEOFindIt_iOS<br>
 flutter clean<br>
 flutter pub get<br>
