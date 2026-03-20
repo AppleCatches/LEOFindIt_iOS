@@ -78,6 +78,7 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
       withServices: nil,
       options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
     )
+    return true
   }
 
   // Stop Bluetooth scanning if it is currently active, and reset the scanning state
@@ -211,70 +212,97 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
     let localName =
       (advertisementData[CBAdvertisementDataLocalNameKey] as? String)?.lowercased() ?? ""
 
+    let isConnectable =
+      (advertisementData[CBAdvertisementDataIsConnectable] as? Bool) ?? false
+
+    let uuids =
+      (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
+    let serviceStrings = uuids.map { $0.uuidString.uppercased() }
+
+    // Local-name checks first
     if localName.contains("tile") {
       return "TILE"
     }
+
     if localName.contains("smart tag") || localName.contains("smarttag") {
       return "SAMSUNG_SMARTTAG"
     }
 
-    // Check manufacturer data for known company identifiers to classify devices
-    if let mfg = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, mfg.count >= 2
+    if localName.contains("galaxy smarttag") {
+      return "SAMSUNG_SMARTTAG"
+    }
+
+    // Manufacturer-data checks
+    if let mfg = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
+      mfg.count >= 2
     {
-      let raw = mfg.map { String(format: "%02x", $0) }.joined()
+
+      let rawUpper = mfg.map { String(format: "%02X", $0) }.joined()
+
       let b0 = UInt16(mfg[mfg.startIndex])
       let b1 = UInt16(mfg[mfg.startIndex + 1])
       let companyId = b0 | (b1 << 8)
 
-      // Check for known company identifiers to classify devices
+      // Tile
       if companyId == 0x0131 {
         return "TILE"
       }
+
+      // Samsung
       if companyId == 0x0075 {
-        return localName.contains("smart") ? "SAMSUNG_SMARTTAG" : "SAMSUNG_DEVICE"
+        if localName.contains("smart") || localName.contains("tag") {
+          return "SAMSUNG_SMARTTAG"
+        }
+        return "SAMSUNG_DEVICE"
       }
+
+      // Apple
       if companyId == 0x004C {
-        /*
-        if raw.hasPrefix("1EFF4C000215") || raw.hasPrefix("1AFF4C000215") {
+        // Keep both known patterns enabled
+        if rawUpper.hasPrefix("1EFF4C001219") || rawUpper.hasPrefix("1EFF4C000215")
+          || rawUpper.hasPrefix("1AFF4C000215")
+        {
           return "AIRTAG"
         }
-        */
-        if raw.hasPrefix("1EFF4C001219") {
-          return "AIRTAG"
+
+        // If Apple manufacturer data exists with no friendly name and not connectable,
+        // treat it as a likely Find My / AirTag-family broadcast
+        if localName.isEmpty && !isConnectable {
+          return "APPLE_DEVICE"
         }
+
         return "APPLE_DEVICE"
       }
     }
 
-    // Check service UUIDs for known patterns that indicate specific device types
-    if let uuids = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
-      let s = uuids.map { $0.uuidString.uppercased() }
-
-      // Check for known service UUIDs that indicate specific device types.
-      if s.contains(where: { $0.contains("FD44") }) {
-        return "AIRTAG"
-      }
-
-      // Some Tile devices use service UUIDs that contain "FEED" or "FEE7", so check for those patterns to classify them as Tile devices.
-      if s.contains(where: { $0.contains("FEED") || $0.contains("FEE7") }) {
-        return "TILE"
-      }
+    // Service UUID checks
+    if serviceStrings.contains(where: { $0.contains("FD44") }) {
+      return "AIRTAG"
     }
 
-    // Check the local name for known patterns that indicate specific device types
+    if serviceStrings.contains(where: { $0.contains("FEED") || $0.contains("FEE7") }) {
+      return "TILE"
+    }
+
+    // Samsung fallback heuristics
     if localName.contains("samsung") {
+      if localName.contains("tag") || localName.contains("smart") {
+        return "SAMSUNG_SMARTTAG"
+      }
       return "SAMSUNG_DEVICE"
     }
 
-    // If the device is not connectable and has no local name but includes service UUIDs, it may be an Apple device that is broadcasting without a local name, so classify it as an Apple device in that case
-    let isConnectable = (advertisementData[CBAdvertisementDataIsConnectable] as? Bool) ?? false
-    if localName.isEmpty && !isConnectable {
-      if let uuids = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID],
-        !uuids.isEmpty
-      {
-        return "APPLE_DEVICE"
-      }
+    if serviceStrings.contains(where: {
+      $0.contains("FD5A") || $0.contains("FD5B") || $0.contains("FDE2")
+    }) {
+      return "SAMSUNG_DEVICE"
     }
+
+    // Apple fallback
+    if localName.isEmpty && !isConnectable && !serviceStrings.isEmpty {
+      return "APPLE_DEVICE"
+    }
+
     return "UNKNOWN"
   }
 

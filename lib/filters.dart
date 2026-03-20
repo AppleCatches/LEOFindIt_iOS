@@ -59,7 +59,7 @@ class FiltersModel {
           hideConnectableNonTrackers: true,
           filterByRssi: false,
           rssiThreshold: -70,
-          sortMode: SortMode.recent,
+          sortMode: SortMode.distanceAsc,
         ),
       );
 

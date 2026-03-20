@@ -246,9 +246,11 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
             break;
         }
 
-        final nearDevices = advancedDevices
-            .where((d) => d.distanceMeters <= filters.maxMainDistanceM)
-            .toList();
+        final nearDevices =
+            advancedDevices
+                .where((d) => d.distanceMeters <= filters.maxMainDistanceM)
+                .toList()
+              ..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
 
         final pages = [
           DistancePage(
