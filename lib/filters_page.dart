@@ -14,7 +14,7 @@ class _FiltersPageState extends State<FiltersPage> {
   late double mainDistance;
   late double advancedDistance;
   late double minRssi;
-  late bool hideConnectable;
+  // late bool hideConnectable;
 
   late bool filterByRssi;
   late int rssiThreshold;
@@ -28,7 +28,7 @@ class _FiltersPageState extends State<FiltersPage> {
     mainDistance = s.maxMainDistanceM;
     advancedDistance = s.maxAdvancedDistanceM;
     minRssi = s.minRssi.toDouble();
-    hideConnectable = s.hideConnectableNonTrackers;
+    // hideConnectable = s.hideConnectableNonTrackers;
     filterByRssi = s.filterByRssi;
     rssiThreshold = s.rssiThreshold;
     sortMode = s.sortMode;
@@ -86,11 +86,13 @@ class _FiltersPageState extends State<FiltersPage> {
           ),
           Text('${minRssi.toStringAsFixed(0)} dBm'),
 
+          /*
           SwitchListTile(
             title: const Text('Hide connectable non-trackers'),
             value: hideConnectable,
             onChanged: (v) => setState(() => hideConnectable = v),
           ),
+          */
 
           const SizedBox(height: 24),
           const _SectionTitle("Filter"),
@@ -162,7 +164,7 @@ class _FiltersPageState extends State<FiltersPage> {
                 maxMainDistanceM: mainDistance,
                 maxAdvancedDistanceM: advancedDistance,
                 minRssi: minRssi.round(),
-                hideConnectableNonTrackers: hideConnectable,
+                // hideConnectableNonTrackers: hideConnectable,
                 filterByRssi: filterByRssi,
                 rssiThreshold: rssiThreshold,
                 sortMode: sortMode,

@@ -56,11 +56,42 @@ class TrackerDevice {
   // Convenience getters to determine if the device is likely an AirTag, Tile, or Samsung SmartTag
   bool get isLikelyAirTag => kind == 'AIRTAG';
   bool get isLikelyTile => kind == 'TILE';
-  
+
   bool get isLikelySamsung =>
       kind == 'SAMSUNG' ||
       kind == 'SAMSUNG_DEVICE' ||
       kind == 'SAMSUNG_SMARTTAG';
+
+  bool get isPossibleAirTag {
+    final n = localName.toLowerCase().trim();
+    if (isLikelyAirTag) return true;
+    final looksUnnamed = n.isEmpty || n == 'unknown';
+
+    final notObviousAppleHost =
+        !n.contains('iphone') &&
+        !n.contains('ipad') &&
+        !n.contains('macbook') &&
+        !n.contains('airpods') &&
+        !n.contains('watch') &&
+        !n.contains('imac') &&
+        !n.contains('apple tv');
+
+    final hasTrackerLikePresence = sightings >= 2;
+    final signalIsRelevant = smoothedRssi >= -85;
+
+    final hasAppleLikeSignature =
+        kind == 'APPLE_DEVICE' ||
+        rawFrame.toLowerCase().contains('4c00') ||
+        serviceUuids.isNotEmpty;
+
+    return (kind == 'APPLE_DEVICE' || kind == 'UNKNOWN') &&
+        looksUnnamed &&
+        !isConnectable &&
+        hasTrackerLikePresence &&
+        signalIsRelevant &&
+        hasAppleLikeSignature &&
+        notObviousAppleHost;
+  }
 
   // A device is considered "found" if it's estimated to be within 10 centimeters, which is a common threshold for determining if a tracker is very close.
   bool get isFound => distanceMeters <= 0.10;
@@ -69,6 +100,10 @@ class TrackerDevice {
   // Filter out common devices that may be detected but are not the target trackers
   bool get looksLikeNonTracker {
     final n = localName.toLowerCase();
+
+    if (isPossibleAirTag) {
+      return false;
+    }
 
     // Check for common device names that are unlikely to be trackers
     if (n.contains('macbook') ||
@@ -82,32 +117,32 @@ class TrackerDevice {
     }
 
     // If the device is connectable but does not have the characteristics of known trackers, it's likely not a tracker
-    if (isConnectable && !isLikelyTile && !isLikelySamsung && !isLikelyAirTag) {
+    if (isConnectable &&
+        !isLikelyTile &&
+        !isLikelySamsung &&
+        !isLikelyAirTag &&
+        !isPossibleAirTag) {
       return true;
     }
-
-    // If the device is rotating through many MAC addresses and doesn't match known tracker types, it's likely not a tracker
     return false;
   }
 
   // A user-friendly display name for the device, based on its kind and characteristics
   String get displayName {
     if (isLikelyAirTag) return 'Apple AirTag';
+    if (isPossibleAirTag) return 'Possible Apple AirTag';
     if (isLikelyTile) return 'Tile Tracker';
 
-    // Samsung devices can have different kinds, so we check for specific ones to provide a more accurate display name
     if (kind == 'SAMSUNG_SMARTTAG' || kind == 'SAMSUNG') {
       return 'Samsung SmartTag';
     }
     if (kind == 'SAMSUNG_DEVICE') return 'Samsung BLE Device';
 
-    // If the kind contains "APPLE" but isn't identified as an AirTag, label it as an Apple Find My Device, which include other types of Apple devices that support the Find My network
     if (kind.contains('APPLE')) return 'Apple Find My Device';
     return 'Unknown Tracker';
   }
 
   // Helps users identify the device based on its MAC address when possible
-  // String get displayMac => pinnedMac ?? lastMac ?? 'Random / Rotating';
   String get displayUuid {
     if (signature.startsWith('IOS_')) {
       return signature.replaceFirst('IOS_', '');

@@ -47,10 +47,14 @@ class AdvancedSearchHelpPage extends StatelessWidget {
             'Minimum RSSI',
             'Sets the minimum signal strength floor. More negative values allow weaker, farther signals. Less negative values keep the list focused on stronger signals.',
           ),
+
+          /*
           _item(
             'Hide connectable non-trackers',
             'Reduces clutter by hiding connectable devices that are less likely to be the tracker types you care about.',
           ),
+          */
+          
           _item(
             'Filter by RSSI',
             'Shows only devices that are stronger than the threshold you set. This is useful when you want to focus on the devices most likely to be physically near you.',

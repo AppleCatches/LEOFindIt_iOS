@@ -207,6 +207,34 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
     return max(0.05, meters)
   }
 
+  private func companyId(from manufacturerData: Data) -> UInt16? {
+    guard manufacturerData.count >= 2 else { return nil }
+    let b0 = UInt16(manufacturerData[manufacturerData.startIndex])
+    let b1 = UInt16(manufacturerData[manufacturerData.startIndex + 1])
+    return b0 | (b1 << 8)
+  }
+
+  private func looksAppleLikeAdvertisement(
+    localName: String,
+    isConnectable: Bool,
+    serviceStrings: [String],
+    manufacturerData: Data?
+  ) -> Bool {
+    if let mfg = manufacturerData, let cid = companyId(from: mfg), cid == 0x004C {
+      return true
+    }
+
+    if localName.isEmpty && !isConnectable {
+      if serviceStrings.contains(where: { $0.contains("FD44") }) {
+        return true
+      }
+      if !serviceStrings.isEmpty {
+        return true
+      }
+    }
+    return false
+  }
+
   // Classify the type of Bluetooth device based on its advertisement data
   private func classifyKind(advertisementData: [String: Any]) -> String {
     let localName =
@@ -219,37 +247,31 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
       (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
     let serviceStrings = uuids.map { $0.uuidString.uppercased() }
 
+    let manufacturerData =
+      advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data
+
     // Local-name checks first
     if localName.contains("tile") {
       return "TILE"
     }
-
     if localName.contains("smart tag") || localName.contains("smarttag") {
       return "SAMSUNG_SMARTTAG"
     }
-
     if localName.contains("galaxy smarttag") {
       return "SAMSUNG_SMARTTAG"
     }
 
     // Manufacturer-data checks
-    if let mfg = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
-      mfg.count >= 2
-    {
-
+    if let mfg = manufacturerData, let cid = companyId(from: mfg) {
       let rawUpper = mfg.map { String(format: "%02X", $0) }.joined()
 
-      let b0 = UInt16(mfg[mfg.startIndex])
-      let b1 = UInt16(mfg[mfg.startIndex + 1])
-      let companyId = b0 | (b1 << 8)
-
       // Tile
-      if companyId == 0x0131 {
+      if cid == 0x0131 {
         return "TILE"
       }
 
       // Samsung
-      if companyId == 0x0075 {
+      if cid == 0x0075 {
         if localName.contains("smart") || localName.contains("tag") {
           return "SAMSUNG_SMARTTAG"
         }
@@ -257,20 +279,12 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
       }
 
       // Apple
-      if companyId == 0x004C {
-        // Keep both known patterns enabled
+      if cid == 0x004C {
         if rawUpper.hasPrefix("1EFF4C001219") || rawUpper.hasPrefix("1EFF4C000215")
           || rawUpper.hasPrefix("1AFF4C000215")
         {
           return "AIRTAG"
         }
-
-        // If Apple manufacturer data exists with no friendly name and not connectable,
-        // treat it as a likely Find My / AirTag-family broadcast
-        if localName.isEmpty && !isConnectable {
-          return "APPLE_DEVICE"
-        }
-
         return "APPLE_DEVICE"
       }
     }
@@ -279,7 +293,6 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
     if serviceStrings.contains(where: { $0.contains("FD44") }) {
       return "AIRTAG"
     }
-
     if serviceStrings.contains(where: { $0.contains("FEED") || $0.contains("FEE7") }) {
       return "TILE"
     }
@@ -298,11 +311,15 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
       return "SAMSUNG_DEVICE"
     }
 
-    // Apple fallback
-    if localName.isEmpty && !isConnectable && !serviceStrings.isEmpty {
+    // Stronger Apple fallback
+    if looksAppleLikeAdvertisement(
+      localName: localName,
+      isConnectable: isConnectable,
+      serviceStrings: serviceStrings,
+      manufacturerData: manufacturerData
+    ) {
       return "APPLE_DEVICE"
     }
-
     return "UNKNOWN"
   }
 

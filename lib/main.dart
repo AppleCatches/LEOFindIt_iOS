@@ -224,10 +224,14 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         final advancedDevices = devices
             .where((d) => d.distanceMeters <= filters.maxAdvancedDistanceM)
             .where((d) => d.rssi >= filters.minRssi)
+            
+            /*
             .where(
               (d) =>
                   !filters.hideConnectableNonTrackers || !d.looksLikeNonTracker,
             )
+            */
+
             .where(
               (d) => !filters.filterByRssi || d.rssi >= filters.rssiThreshold,
             )

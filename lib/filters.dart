@@ -7,7 +7,7 @@ class FiltersState {
   final double maxAdvancedDistanceM;
   final double maxMainDistanceM; // e.g. 3.05 m = 10 ft
   final int minRssi;
-  final bool hideConnectableNonTrackers;
+  // final bool hideConnectableNonTrackers;
 
   final bool filterByRssi;
   final int rssiThreshold;
@@ -18,7 +18,7 @@ class FiltersState {
     required this.maxAdvancedDistanceM,
     required this.maxMainDistanceM,
     required this.minRssi,
-    required this.hideConnectableNonTrackers,
+    // required this.hideConnectableNonTrackers,
     required this.filterByRssi,
     required this.rssiThreshold,
     required this.sortMode,
@@ -29,7 +29,7 @@ class FiltersState {
     double? maxAdvancedDistanceM,
     double? maxMainDistanceM,
     int? minRssi,
-    bool? hideConnectableNonTrackers,
+    // bool? hideConnectableNonTrackers,
     bool? filterByRssi,
     int? rssiThreshold,
     SortMode? sortMode,
@@ -39,8 +39,8 @@ class FiltersState {
       maxAdvancedDistanceM: maxAdvancedDistanceM ?? this.maxAdvancedDistanceM,
       maxMainDistanceM: maxMainDistanceM ?? this.maxMainDistanceM,
       minRssi: minRssi ?? this.minRssi,
-      hideConnectableNonTrackers:
-          hideConnectableNonTrackers ?? this.hideConnectableNonTrackers,
+      // hideConnectableNonTrackers:
+          // hideConnectableNonTrackers ?? this.hideConnectableNonTrackers,
       filterByRssi: filterByRssi ?? this.filterByRssi,
       rssiThreshold: rssiThreshold ?? this.rssiThreshold,
       sortMode: sortMode ?? this.sortMode,
@@ -56,7 +56,7 @@ class FiltersModel {
           maxAdvancedDistanceM: 20.0,
           maxMainDistanceM: 3.05, // 10 ft
           minRssi: -95,
-          hideConnectableNonTrackers: true,
+          // hideConnectableNonTrackers: true,
           filterByRssi: false,
           rssiThreshold: -70,
           sortMode: SortMode.distanceAsc,
@@ -77,9 +77,9 @@ class FiltersModel {
     notifier.value = notifier.value.copyWith(minRssi: v);
   }
 
-  static void setHideConnectableNonTrackers(bool v) {
-    notifier.value = notifier.value.copyWith(hideConnectableNonTrackers: v);
-  }
+  // static void setHideConnectableNonTrackers(bool v) {
+    // notifier.value = notifier.value.copyWith(hideConnectableNonTrackers: v);
+  // }
 
   static void setFilterByRssi(bool v) {
     notifier.value = notifier.value.copyWith(filterByRssi: v);
@@ -97,7 +97,7 @@ class FiltersModel {
     required double maxMainDistanceM,
     required double maxAdvancedDistanceM,
     required int minRssi,
-    required bool hideConnectableNonTrackers,
+    // required bool hideConnectableNonTrackers,
     required bool filterByRssi,
     required int rssiThreshold,
     required SortMode sortMode,
@@ -106,7 +106,7 @@ class FiltersModel {
       maxAdvancedDistanceM: maxAdvancedDistanceM,
       maxMainDistanceM: maxMainDistanceM,
       minRssi: minRssi,
-      hideConnectableNonTrackers: hideConnectableNonTrackers,
+      // hideConnectableNonTrackers: hideConnectableNonTrackers,
       filterByRssi: filterByRssi,
       rssiThreshold: rssiThreshold,
       sortMode: sortMode,
