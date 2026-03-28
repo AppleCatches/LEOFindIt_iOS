@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'device_marks.dart';
 import 'models.dart';
 import 'ble_bridge.dart';
+import 'reports_store.dart';
 
 // The SearchPage widget provides a detailed view of a specific detected tracker device, allowing users to see real-time distance estimates, signal strength, and other relevant information
 // Also includes functionality for marking the device as Friendly, Unknown, or Suspect, helping users manage their detected devices effectively
@@ -138,7 +139,7 @@ class _SearchPageState extends State<SearchPage>
   void _updateState(TrackerDevice d) {
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    final rawDist = d.distanceM;
+    final rawDist = d.distance;
     _displayDistanceM ??= rawDist;
     _displayDistanceM = (_displayDistanceM! * 0.25) + (rawDist * 0.75);
 
@@ -222,7 +223,8 @@ class _SearchPageState extends State<SearchPage>
     final band = _bandFromRssi(d.smoothedRssi);
     final color = _bandColor(band);
 
-    final mark = DeviceMarks.get(d.signature);
+    final mark = DeviceMarks.getMark(d.signature);
+    final customName = DeviceMarks.getName(d.signature) ?? '';
 
     return Scaffold(
       appBar: AppBar(title: Text(d.displayName)),
@@ -256,7 +258,7 @@ class _SearchPageState extends State<SearchPage>
             ),
             const SizedBox(height: 8),
             Text(
-              '${(_displayDistanceM ?? d.distanceM).toStringAsFixed(2)} m • ${_feetLabel(_displayDistanceM ?? d.distanceM)}',
+              '${(_displayDistanceM ?? d.distance).toStringAsFixed(2)} m • ${_feetLabel(_displayDistanceM ?? d.distance)}',
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
@@ -282,63 +284,118 @@ class _SearchPageState extends State<SearchPage>
             const SizedBox(height: 18),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: _MarkButton(
-                      label: 'Friendly',
-                      icon: Icons.check_circle_rounded,
-                      selected: mark == DeviceMark.friendly,
-                      selectedColor: Colors.green,
-                      onTap: () {
-                        setState(() {
-                          final current = DeviceMarks.get(d.signature);
-                          if (current == DeviceMark.friendly) {
-                            DeviceMarks.clear(d.signature);
-                          } else {
-                            DeviceMarks.set(d.signature, DeviceMark.friendly);
-                          }
-                        });
-                      },
+                  // 1. Classification Dropdown
+                  const Text(
+                    'Classify Device',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
                     ),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _MarkButton(
-                      label: 'Unknown',
-                      icon: Icons.help_outline_rounded,
-                      selected: mark == DeviceMark.unknown,
-                      selectedColor: Colors.blueGrey,
-                      onTap: () {
-                        setState(() {
-                          final current = DeviceMarks.get(d.signature);
-                          if (current == DeviceMark.unknown) {
-                            DeviceMarks.clear(d.signature);
-                          } else {
-                            DeviceMarks.set(d.signature, DeviceMark.unknown);
-                          }
-                        });
-                      },
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<DeviceMark?>(
+                    value: mark,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
                     ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Unmarked')),
+                      DropdownMenuItem(
+                        value: DeviceMark.suspect,
+                        child: Text(
+                          'Suspect',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: DeviceMark.friendly,
+                        child: Text(
+                          'Friendly',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: DeviceMark.nonsuspect,
+                        child: Text(
+                          'Nonsuspect',
+                          style: TextStyle(
+                            color: Colors.blueGrey,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      setState(() {
+                        if (val == null) {
+                          DeviceMarks.clear(d.signature);
+                        } else {
+                          DeviceMarks.setMark(d.signature, val);
+                        }
+                      });
+                    },
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _MarkButton(
-                      label: 'Suspect',
-                      icon: Icons.warning_amber_rounded,
-                      selected: mark == DeviceMark.suspect,
-                      selectedColor: Colors.orange,
-                      onTap: () {
-                        setState(() {
-                          final current = DeviceMarks.get(d.signature);
-                          if (current == DeviceMark.suspect) {
-                            DeviceMarks.clear(d.signature);
-                          } else {
-                            DeviceMarks.set(d.signature, DeviceMark.suspect);
-                          }
-                        });
-                      },
+
+                  const SizedBox(height: 16),
+
+                  // 2. Custom Rename Field
+                  TextField(
+                    decoration: InputDecoration(
+                      labelText: 'Rename Device',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
                     ),
+                    controller: TextEditingController(text: customName)
+                      ..selection = TextSelection.fromPosition(
+                        TextPosition(offset: customName.length),
+                      ),
+                    onSubmitted: (val) {
+                      DeviceMarks.setName(d.signature, val);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Device renamed')),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 3. Generate Report Button
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.description),
+                    label: const Text('Generate Case Report'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () async {
+                      await ReportsStore.createFromDevice(d);
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Report generated. Check the Reports tab.',
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

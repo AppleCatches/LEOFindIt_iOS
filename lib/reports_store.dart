@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http; // Add this import
 
 import 'device_marks.dart';
 import 'models.dart';
@@ -18,7 +19,7 @@ class TrackerReport {
   final String mac;
 
   final int rssi;
-  final double distanceMeters;
+  final double distanceFeet;
   final int firstSeenMs;
   final int lastSeenMs;
   final int rotatingMacCount;
@@ -38,7 +39,7 @@ class TrackerReport {
     required this.kind,
     required this.mac,
     required this.rssi,
-    required this.distanceMeters,
+    required this.distanceFeet,
     required this.firstSeenMs,
     required this.lastSeenMs,
     required this.rotatingMacCount,
@@ -61,7 +62,7 @@ class TrackerReport {
       kind: kind,
       mac: mac,
       rssi: rssi,
-      distanceMeters: distanceMeters,
+      distanceFeet: distanceFeet,
       firstSeenMs: firstSeenMs,
       lastSeenMs: lastSeenMs,
       rotatingMacCount: rotatingMacCount,
@@ -80,7 +81,7 @@ class TrackerReport {
     "kind": kind,
     "mac": mac,
     "rssi": rssi,
-    "distanceMeters": distanceMeters,
+    "distanceFeet": distanceFeet,
     "firstSeenMs": firstSeenMs,
     "lastSeenMs": lastSeenMs,
     "rotatingMacCount": rotatingMacCount,
@@ -100,7 +101,7 @@ class TrackerReport {
     kind: (j["kind"] as String?) ?? "",
     mac: (j["mac"] as String?) ?? "",
     rssi: (j["rssi"] as int?) ?? -100,
-    distanceMeters: (j["distanceMeters"] as num?)?.toDouble() ?? 0.0,
+    distanceFeet: (j["distanceFeet"] as num?)?.toDouble() ?? 0.0,
     firstSeenMs: (j["firstSeenMs"] as int?) ?? 0,
     lastSeenMs: (j["lastSeenMs"] as int?) ?? 0,
     rotatingMacCount: (j["rotatingMacCount"] as int?) ?? 0,
@@ -113,9 +114,12 @@ class TrackerReport {
 
 class ReportsStore {
   static const MethodChannel _storage = MethodChannel("leo_find_it/storage");
-
   static final ValueNotifier<List<TrackerReport>> notifier =
       ValueNotifier<List<TrackerReport>>([]);
+
+  // REPLACE THIS with your actual Formspree URL
+  static const String _formspreeUrl =
+      "https://formspree.io/f/YOUR_UNIQUE_ID_HERE";
 
   static Future<void> init() async {
     try {
@@ -171,7 +175,8 @@ class ReportsStore {
       kind: d.kind,
       mac: d.displayUuid,
       rssi: d.rssi,
-      distanceMeters: d.distanceMeters,
+      distanceFeet: d.distanceFeet,
+      //distanceMeters: d.distanceMeters,
       firstSeenMs: d.firstSeenMs,
       lastSeenMs: d.lastSeenMs,
       rotatingMacCount: d.rotatingMacCount,
@@ -184,6 +189,7 @@ class ReportsStore {
   }
 
   static Future<void> updateFeedback(String reportId, String feedback) async {
+    // update local state
     final updated = notifier.value.map((r) {
       if (r.reportId != reportId) return r;
       return r.copyWith(teamFeedback: feedback);
@@ -191,13 +197,49 @@ class ReportsStore {
 
     notifier.value = updated;
     await _persist();
+
+    // send feedback to backend
+    _transmitFeedback(feedback);
+  }
+
+  static Future<void> _transmitFeedback(String feedbackText) async {
+    if (feedbackText.trim().isEmpty) return;
+
+    try {
+      final uri = Uri.parse(_formspreeUrl);
+
+      // payload that includes feedback and timestamp
+      // Formspree automatically maps these JSON keys to the email body.
+      final payload = {
+        "Feedback": feedbackText,
+        "Timestamp (UTC)": DateTime.now().toUtc().toIso8601String(),
+        "App Version": "1.1.0+1",
+      };
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Accept": "application/json", // Required by Formspree for API calls
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint("Feedback transmitted to Formspree successfully.");
+      } else {
+        debugPrint("Formspree error. Status: ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("Error transmitting feedback: $e");
+    }
   }
 
   static String _safeTimestamp(DateTime t) {
     return t.toIso8601String().replaceAll(":", "-").replaceAll(".", "-");
   }
 
-  static String _feet(double meters) => (meters * 3.28084).toStringAsFixed(1);
+  // static String _feet(double meters) => (meters * 3.28084).toStringAsFixed(1);
 
   static String _dtLocalString(DateTime dt) {
     final y = dt.year.toString().padLeft(4, '0');
@@ -223,11 +265,11 @@ class ReportsStore {
           )
         : "N/A";
 
-    final mark = DeviceMarks.get(r.signature);
+    final mark = DeviceMarks.getMark(r.signature);
     final markLabel = switch (mark) {
-      DeviceMark.friendly => "Friendly",
       DeviceMark.suspect => "Suspect",
-      DeviceMark.unknown => "Unknown",
+      DeviceMark.friendly => "Friendly",
+      DeviceMark.nonsuspect => "Non-Suspect",
       null => "Unmarked",
     };
 
@@ -251,7 +293,7 @@ UUID: ${r.mac}
 Detection Summary
 -----------------
 RSSI: ${r.rssi} dBm
-Distance estimate: ${_feet(r.distanceMeters)} ft (${r.distanceMeters.toStringAsFixed(2)} m)
+Distance estimate: ${r.distanceFeet.toStringAsFixed(1)} ft
 First seen: $firstSeen
 Last seen:  $lastSeen
 MAC rotations observed: ${r.rotatingMacCount}

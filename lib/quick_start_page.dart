@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-// A quick start guide for new users, outlining the basic steps on ho to use the app
+// A quick start guide for new users, outlining the basic steps on how to use the app
 class QuickStartPage extends StatelessWidget {
   const QuickStartPage({super.key});
 

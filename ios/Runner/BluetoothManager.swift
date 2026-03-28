@@ -145,6 +145,7 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
     let priorSmooth = prev?.smoothedRssi ?? rssi
     let smoothed = Int((Double(priorSmooth) * 0.4) + (Double(rssi) * 0.6))
     let distanceMeters = estimateDistanceMeters(kind: kind, rssi: smoothed)
+    let distanceFeet = distanceMeters * 3.28084
 
     // Update the state dictionary with the new information for the detected device
     states[signature] = TrackerState(
@@ -167,7 +168,8 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
       "kind": kind,
       "rssi": rssi,
       "smoothedRssi": smoothed,
-      "distanceMeters": distanceMeters,
+      "distanceFeet": distanceFeet,
+      // "distanceMeters": distanceMeters,
       "firstSeenMs": Int(firstSeen),
       "lastSeenMs": Int(nowMs),
       "sightings": sightings,
@@ -204,7 +206,8 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
     // Provides an estimate of the distance in meters
     let ratio = (txPower - Double(rssi)) / (10.0 * PATH_LOSS_N)
     let meters = pow(10.0, ratio)
-    return max(0.05, meters)
+    let feet = meters * 3.28084
+    return max(0.16, feet)
   }
 
   private func companyId(from manufacturerData: Data) -> UInt16? {

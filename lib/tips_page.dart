@@ -43,6 +43,7 @@ class TipsPage extends StatelessWidget {
           _tip('If many devices are present, narrow results with RSSI filtering and shorter distance ranges.'),
           _tip('Document the UUID shown by the app, not a MAC address, because iOS does not expose MAC addresses through CoreBluetooth.'),
           _tip('Treat distance estimates as approximate. Real-world radio conditions can shift the reported distance.'),
+          _tip('Signal Blockers: Metal heavily blocks Bluetooth signals. A tracker hidden inside a metal container or vehicle frame may show a very weak signal or be completely undetectable. Cardboard causes minor signal drops.'),
           const SizedBox(height: 12),
           const Text(
             'More tips can be added later as needed.',

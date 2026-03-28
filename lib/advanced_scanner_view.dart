@@ -68,7 +68,7 @@ class AdvancedScannerView extends StatelessWidget {
                 valueListenable: DeviceMarks.version,
                 builder: (_, __, ___) {
                   final shownUnmarked = shown
-                      .where((d) => DeviceMarks.get(d.signature) == null)
+                      .where((d) => DeviceMarks.getMark(d.signature) == null)
                       .toList();
 
                   return shownUnmarked.isEmpty
@@ -85,7 +85,7 @@ class AdvancedScannerView extends StatelessWidget {
                             final name = d.displayName;
                             final id = d.id;
                             final rssi = d.rssi;
-                            final distanceM = d.distanceM;
+                            final distance = d.distanceFeet;
 
                             return Card(
                               margin: const EdgeInsets.symmetric(
@@ -120,7 +120,7 @@ class AdvancedScannerView extends StatelessWidget {
                                       "RSSI: $rssi dBm • ${_rssiLabel(rssi)}",
                                     ),
                                     Text(
-                                      "Distance: ${distanceM.toStringAsFixed(2)} m • ${d.distanceFtLabel}",
+                                      "Distance: ${distance.toStringAsFixed(2)} ft • ${d.distance}",
                                     ),
                                     Text("UUID: ${d.displayUuid}"),
                                     Text("Rotations: ${d.rotatingMacCount}"),

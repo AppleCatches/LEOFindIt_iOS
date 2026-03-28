@@ -28,11 +28,11 @@ class IdentificationPage extends StatelessWidget {
         final qualified = unique.values.where((d) {
           if (d.distance <= 0) return false;
 
-          final mark = DeviceMarks.get(d.signature);
+          final mark = DeviceMarks.getMark(d.signature);
 
-          if (mark == DeviceMark.friendly ||
-              mark == DeviceMark.unknown ||
-              mark == DeviceMark.suspect) {
+          if (mark == DeviceMark.suspect ||
+              mark == DeviceMark.friendly ||
+              mark == DeviceMark.nonsuspect) {
             return true;
           }
 
@@ -41,46 +41,46 @@ class IdentificationPage extends StatelessWidget {
           return true;
         }).toList();
 
-        final friendly = <TrackerDevice>[];
-        final unknown = <TrackerDevice>[];
+        // Change lists to reflect new categories
         final suspect = <TrackerDevice>[];
+        final friendly = <TrackerDevice>[];
+        final nonsuspect = <TrackerDevice>[];
 
-        // For each qualified device, check its mark/status and categorize it accordingly
         for (final d in qualified) {
-          final mark = DeviceMarks.get(d.signature);
-          if (mark == DeviceMark.friendly) {
-            friendly.add(d);
-          } else if (mark == DeviceMark.unknown) {
-            unknown.add(d);
-          } else if (mark == DeviceMark.suspect) {
+          final mark = DeviceMarks.getMark(d.signature);
+          if (mark == DeviceMark.suspect) {
             suspect.add(d);
+          } else if (mark == DeviceMark.friendly) {
+            friendly.add(d);
+          } else if (mark == DeviceMark.nonsuspect) {
+            // Replaced 'unknown'
+            nonsuspect.add(d);
           }
         }
 
+        // Update the ListView children order
         return ListView(
           padding: const EdgeInsets.all(12),
           children: [
-            _sectionTitle('Friendly'),
-            if (friendly.isEmpty)
-              _emptyHint('No friendly devices yet')
-            else
-              ...friendly.map((d) => _tile(context, d)),
-
-            const SizedBox(height: 24),
-
-            _sectionTitle('Unknown'),
-            if (unknown.isEmpty)
-              _emptyHint('No unknown devices yet')
-            else
-              ...unknown.map((d) => _tile(context, d)),
-
-            const SizedBox(height: 24),
-
             _sectionTitle('Suspect'),
             if (suspect.isEmpty)
               _emptyHint('No suspect devices yet')
             else
               ...suspect.map((d) => _tile(context, d)),
+            const SizedBox(height: 24),
+
+            _sectionTitle('Friendly'),
+            if (friendly.isEmpty)
+              _emptyHint('No friendly devices yet')
+            else
+              ...friendly.map((d) => _tile(context, d)),
+            const SizedBox(height: 24),
+
+            _sectionTitle('Nonsuspect'),
+            if (nonsuspect.isEmpty)
+              _emptyHint('No nonsuspect devices yet')
+            else
+              ...nonsuspect.map((d) => _tile(context, d)),
           ],
         );
       },
@@ -137,9 +137,9 @@ class IdentificationPage extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: ListTile(
         onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => SearchPage(device: d)),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => SearchPage(device: d)));
         },
         leading: Icon(icon),
         title: Text(

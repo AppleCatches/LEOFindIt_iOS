@@ -6,13 +6,18 @@ import 'package:sensors_plus/sensors_plus.dart';
 
 import 'app_drawer.dart';
 import 'ble_bridge.dart';
+import 'device_marks.dart';
 import 'distance_page.dart';
 import 'filters.dart';
 import 'identification_page.dart';
 import 'models.dart';
+import 'reports_store.dart';
 
 // Initialize the app and manage the overall state
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await DeviceMarks.init();
+  await ReportsStore.init();
   runApp(const LeoTrackerApp());
 }
 
@@ -81,6 +86,12 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     _scanCountdownTimer?.cancel();
     _scanCountdownTimer = null;
     _scanSecondsLeft = 0;
+  }
+
+  Future<void> _clearDevices() async {
+    setState(() {
+      _devicesBySig.removeWhere((sig, _) => DeviceMarks.getMark(sig) == null);
+    });
   }
 
   // Toggle the BLE scanning state when the user initiates a scan or stops it, managing the scan session and updating the UI accordingly
@@ -222,16 +233,14 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
       valueListenable: FiltersModel.notifier,
       builder: (_, filters, __) {
         final advancedDevices = devices
-            .where((d) => d.distanceMeters <= filters.maxAdvancedDistanceM)
+            .where((d) => d.distanceFeet <= filters.maxAdvancedDistanceFt)
             .where((d) => d.rssi >= filters.minRssi)
-            
             /*
             .where(
               (d) =>
                   !filters.hideConnectableNonTrackers || !d.looksLikeNonTracker,
             )
             */
-
             .where(
               (d) => !filters.filterByRssi || d.rssi >= filters.rssiThreshold,
             )
@@ -245,16 +254,16 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
             break;
           case SortMode.distanceAsc:
             advancedDevices.sort(
-              (a, b) => a.distanceMeters.compareTo(b.distanceMeters),
+              (a, b) => a.distanceFeet.compareTo(b.distanceFeet),
             );
             break;
         }
 
         final nearDevices =
             advancedDevices
-                .where((d) => d.distanceMeters <= filters.maxMainDistanceM)
+                .where((d) => d.distanceFeet <= filters.maxMainDistanceFt)
                 .toList()
-              ..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+              ..sort((a, b) => a.distanceFeet.compareTo(b.distanceFeet));
 
         final pages = [
           DistancePage(
@@ -264,6 +273,7 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
             onRescan: toggleScan,
             lastScanTime: lastScanTime,
             scanCountdownLabel: scanTimeLabel,
+            onRefresh: _clearDevices,
           ),
           IdentificationPage(devices: advancedDevices),
         ];

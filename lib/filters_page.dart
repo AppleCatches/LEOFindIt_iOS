@@ -25,8 +25,8 @@ class _FiltersPageState extends State<FiltersPage> {
   void initState() {
     super.initState();
     final s = FiltersModel.state;
-    mainDistance = s.maxMainDistanceM;
-    advancedDistance = s.maxAdvancedDistanceM;
+    mainDistance = s.maxMainDistanceFt;
+    advancedDistance = s.maxAdvancedDistanceFt;
     minRssi = s.minRssi.toDouble();
     // hideConnectable = s.hideConnectableNonTrackers;
     filterByRssi = s.filterByRssi;
@@ -43,33 +43,33 @@ class _FiltersPageState extends State<FiltersPage> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           const Text(
-            'Main list distance (meters)',
+            'Main list distance (feet)',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           Slider(
             value: mainDistance,
-            min: 1,
-            max: 10,
-            divisions: 18,
-            label: mainDistance.toStringAsFixed(2),
+            min: 5,
+            max: 50,
+            divisions: 45,
+            label: mainDistance.toStringAsFixed(0),
             onChanged: (v) => setState(() => mainDistance = v),
           ),
-          Text('${mainDistance.toStringAsFixed(2)} m'),
+          Text('${mainDistance.toStringAsFixed(0)} ft'),
 
           const SizedBox(height: 20),
           const Text(
-            'Advanced list distance (meters)',
+            'Advanced list distance (feet)',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           Slider(
             value: advancedDistance,
-            min: 5,
-            max: 50,
-            divisions: 45,
+            min: 20,
+            max: 200, // Search up to 200ft
+            divisions: 180,
             label: advancedDistance.toStringAsFixed(0),
             onChanged: (v) => setState(() => advancedDistance = v),
           ),
-          Text('${advancedDistance.toStringAsFixed(0)} m'),
+          Text('${advancedDistance.toStringAsFixed(0)} ft'),
 
           const SizedBox(height: 20),
           const Text(
@@ -93,7 +93,6 @@ class _FiltersPageState extends State<FiltersPage> {
             onChanged: (v) => setState(() => hideConnectable = v),
           ),
           */
-
           const SizedBox(height: 24),
           const _SectionTitle("Filter"),
           _ToggleCard(
@@ -161,8 +160,8 @@ class _FiltersPageState extends State<FiltersPage> {
           ElevatedButton(
             onPressed: () {
               FiltersModel.apply(
-                maxMainDistanceM: mainDistance,
-                maxAdvancedDistanceM: advancedDistance,
+                maxMainDistanceFt: mainDistance,
+                maxAdvancedDistanceFt: advancedDistance,
                 minRssi: minRssi.round(),
                 // hideConnectableNonTrackers: hideConnectable,
                 filterByRssi: filterByRssi,

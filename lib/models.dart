@@ -1,4 +1,6 @@
 // Model for representing detected tracker devices and their properties
+import 'device_marks.dart';
+
 class TrackerDevice {
   final String signature;
   final String id;
@@ -8,7 +10,7 @@ class TrackerDevice {
   final String? lastMac;
 
   final int rssi;
-  final double distanceMeters;
+  final double distanceFeet;
   final int firstSeenMs;
   final int lastSeenMs;
   final int sightings;
@@ -21,8 +23,8 @@ class TrackerDevice {
   final bool isConnectable;
   final List<String> serviceUuids;
 
-  // Conversion factor from meters to feet for distance calculations
-  static const double _mToFt = 3.28084;
+  //Conversion factor from meters to feet for distance calculations
+  // static const double _mToFt = 3.28084;
 
   // Constructor for creating a TrackerDevice instance with all properties
   TrackerDevice({
@@ -32,7 +34,7 @@ class TrackerDevice {
     required this.pinnedMac,
     required this.lastMac,
     required this.rssi,
-    required this.distanceMeters,
+    required this.distanceFeet,
     required this.firstSeenMs,
     required this.lastSeenMs,
     required this.sightings,
@@ -44,7 +46,7 @@ class TrackerDevice {
     required this.serviceUuids,
   });
 
-  // Getters for distance in different units
+  /*
   double get distanceM => distanceMeters;
   double get distanceFt => distanceMeters * _mToFt;
 
@@ -52,6 +54,11 @@ class TrackerDevice {
       '${distanceFt.toStringAsFixed(distanceFt < 10 ? 1 : 0)} ft';
 
   double get distance => distanceMeters;
+  */
+
+  double get distance => distanceFeet;
+  String get distanceFtLabel =>
+      '${distanceFeet.toStringAsFixed(distanceFeet < 10 ? 1 : 0)} ft';
 
   // Convenience getters to determine if the device is likely an AirTag, Tile, or Samsung SmartTag
   bool get isLikelyAirTag => kind == 'AIRTAG';
@@ -94,7 +101,7 @@ class TrackerDevice {
   }
 
   // A device is considered "found" if it's estimated to be within 10 centimeters, which is a common threshold for determining if a tracker is very close.
-  bool get isFound => distanceMeters <= 0.10;
+  bool get isFound => distanceFeet <= 0.10;
 
   // Determine if a detected device is not a tracker
   // Filter out common devices that may be detected but are not the target trackers
@@ -129,6 +136,9 @@ class TrackerDevice {
 
   // A user-friendly display name for the device, based on its kind and characteristics
   String get displayName {
+    final customName = DeviceMarks.getName(signature);
+    if (customName != null && customName.isNotEmpty) return customName;
+    
     if (isLikelyAirTag) return 'Apple AirTag';
     if (isPossibleAirTag) return 'Possible Apple AirTag';
     if (isLikelyTile) return 'Tile Tracker';
@@ -162,7 +172,7 @@ class TrackerDevice {
       pinnedMac: pinnedMac ?? newer.pinnedMac,
       lastMac: newer.lastMac,
       rssi: newer.rssi,
-      distanceMeters: newer.distanceMeters,
+      distanceFeet: newer.distanceFeet,
       firstSeenMs: firstSeenMs,
       lastSeenMs: newer.lastSeenMs,
       sightings: sightings + 1,
@@ -189,7 +199,7 @@ class TrackerDevice {
       pinnedMac: shouldPin ? mac : null,
       lastMac: mac,
       rssi: (m['rssi'] as int?) ?? -100,
-      distanceMeters: ((m['distanceMeters'] as num?) ?? 0).toDouble(),
+      distanceFeet: ((m['distanceFeet'] as num?) ?? 0).toDouble(),
       firstSeenMs: (m['firstSeenMs'] as int?) ?? (m['lastSeenMs'] as int?) ?? 0,
       lastSeenMs: (m['lastSeenMs'] as int?) ?? 0,
       sightings: (m['sightings'] as int?) ?? 1,

@@ -54,7 +54,6 @@ class AdvancedSearchHelpPage extends StatelessWidget {
             'Reduces clutter by hiding connectable devices that are less likely to be the tracker types you care about.',
           ),
           */
-          
           _item(
             'Filter by RSSI',
             'Shows only devices that are stronger than the threshold you set. This is useful when you want to focus on the devices most likely to be physically near you.',
@@ -85,6 +84,9 @@ class AdvancedSearchHelpPage extends StatelessWidget {
                   SizedBox(height: 8),
                   Text(
                     'If the screen is crowded, turn on RSSI filtering and raise the threshold toward stronger signals. If you are searching a vehicle or package, reduce the distance range and re-scan from a closer position.',
+                  ),
+                  Text(
+                    'If searching a vehicle or metal container, be aware that metal blocks signals. You may need to reduce the minimum RSSI threshold and scan from multiple close angles to detect hidden devices.',
                   ),
                 ],
               ),

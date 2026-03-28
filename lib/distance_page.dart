@@ -15,6 +15,7 @@ class DistancePage extends StatelessWidget {
   final Future<void> Function() onRescan;
   final DateTime? lastScanTime;
   final String scanCountdownLabel;
+  final Future<void> Function() onRefresh;
 
   // Constructor for the DistancePage widget to allow the page to display relevant information about detected devices and provide functionality for managing scans
   const DistancePage({
@@ -24,7 +25,7 @@ class DistancePage extends StatelessWidget {
     required this.scanning,
     required this.onRescan,
     required this.lastScanTime,
-    required this.scanCountdownLabel,
+    required this.scanCountdownLabel, required this.onRefresh,
   });
 
   // Format the last scan time into a user-friendly string, displaying the time in a 12-hour format with AM/PM
@@ -165,27 +166,36 @@ class DistancePage extends StatelessWidget {
             valueListenable: DeviceMarks.version,
             builder: (_, __, ___) {
               final visibleTrack = track
-                  .where((d) => DeviceMarks.get(d.signature) == null)
+                  .where((d) => DeviceMarks.getMark(d.signature) == null) 
                   .toList();
 
-              return visibleTrack.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No trackers detected',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 20,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: visibleTrack.length,
-                      itemBuilder: (_, i) {
-                        final d = visibleTrack[i];
-                        final mark = DeviceMarks.get(d.signature);
-                        final isMarked = mark != null;
+              return RefreshIndicator(
+                onRefresh: onRefresh, 
+                child: visibleTrack.isEmpty
+                    ? ListView( 
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 100),
+                          Center(
+                            child: Text(
+                              'No trackers detected', 
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 20, 
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey
+                              )
+                            )
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: visibleTrack.length,
+                        itemBuilder: (_, i) {
+                          final d = visibleTrack[i];
+                          final mark = DeviceMarks.getMark(d.signature);
+                          final isMarked = mark != null;
 
                         return GestureDetector(
                           onTap: () => Navigator.push(
@@ -232,7 +242,7 @@ class DistancePage extends StatelessWidget {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            'Distance: ${d.distanceM.toStringAsFixed(2)} m • ${d.distanceFtLabel}',
+                                            'Distance: ${d.distanceFeet.toStringAsFixed(2)} ft • ${d.distanceFtLabel}',
                                             style: TextStyle(
                                               color: isMarked
                                                   ? Colors.grey
@@ -285,7 +295,8 @@ class DistancePage extends StatelessWidget {
                           ),
                         );
                       },
-                    );
+                    ),
+              );
             },
           ),
         ),

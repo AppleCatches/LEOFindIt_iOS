@@ -111,7 +111,7 @@ class _ReportsPageState extends State<ReportsPage> {
                     child: ListTile(
                       title: Text("${r.kind} • $short"),
                       subtitle: Text(
-                        "${r.createdAt} • RSSI ${r.rssi} dBm • ${(r.distanceMeters * 3.28084).toStringAsFixed(1)} ft",
+                        "${r.createdAt} • RSSI ${r.rssi} dBm • ${r.distanceFeet.toStringAsFixed(1)} ft",
                       ),
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) async {
