@@ -118,8 +118,38 @@ class ReportsStore {
       ValueNotifier<List<TrackerReport>>([]);
 
   // REPLACE THIS with your actual Formspree URL
-  static const String _formspreeUrl =
-      "https://formspree.io/f/YOUR_UNIQUE_ID_HERE";
+  static const String _formspreeUrl = "https://formspree.io/f/mykbzaoe";
+
+  static Future<void> sendAnonymousFeedback(String feedbackText) async {
+    if (feedbackText.trim().isEmpty) return;
+
+    final now = DateTime.now();
+    int hour = now.hour;
+    final ampm = hour >= 12 ? 'PM' : 'AM';
+    if (hour > 12) hour -= 12;
+    if (hour == 0) hour = 12;
+    final min = now.minute.toString().padLeft(2, '0');
+    final estTime = "${now.month}/${now.day}/${now.year} $hour:$min $ampm";
+
+    try {
+      final uri = Uri.parse(_formspreeUrl);
+      final payload = {
+        "Feedback": feedbackText,
+        "Timestamp (EST)": estTime,
+        "App Version": "1.1.0+1",
+      };
+      await http.post(
+        uri,
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode(payload),
+      );
+    } catch (e) {
+      debugPrint("Error transmitting feedback: $e");
+    }
+  }
 
   static Future<void> init() async {
     try {

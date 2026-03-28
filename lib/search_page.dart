@@ -55,6 +55,74 @@ class _SearchPageState extends State<SearchPage>
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
 
+  void _showRenameDialog(BuildContext context, TrackerDevice d) {
+    final customName = DeviceMarks.getName(d.signature) ?? '';
+    final ctrl = TextEditingController(text: customName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Device'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(hintText: 'Enter new name'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx), // Changed from onTap
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              // Changed from onTap
+              DeviceMarks.setName(d.signature, ctrl.text);
+              Navigator.pop(ctx);
+              setState(() {});
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /*
+  void _showFeedbackDialog(BuildContext context, TrackerDevice d) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Submit Feedback'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Describe where it was found, or app issues (No PII)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx), // Changed from onTap
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Changed from onTap
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Sending feedback...')),
+              );
+              ReportsStore.sendAnonymousFeedback(ctrl.text);
+            },
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+  }
+  */
+
   // Initialize the state of the SearchPage, setting up the necessary subscriptions to receive real-time updates about the detected device, and configuring timers and animations to provide visual feedback based on the device's proximity and signal strength
   @override
   void initState() {
@@ -227,7 +295,20 @@ class _SearchPageState extends State<SearchPage>
     final customName = DeviceMarks.getName(d.signature) ?? '';
 
     return Scaffold(
-      appBar: AppBar(title: Text(d.displayName)),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(d.displayName, overflow: TextOverflow.ellipsis),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit, size: 20),
+              onPressed: () => _showRenameDialog(context, d),
+            ),
+          ],
+        ),
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -350,53 +431,22 @@ class _SearchPageState extends State<SearchPage>
                   ),
 
                   const SizedBox(height: 16),
-
-                  // 2. Custom Rename Field
-                  TextField(
-                    decoration: InputDecoration(
-                      labelText: 'Rename Device',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                    ),
-                    controller: TextEditingController(text: customName)
-                      ..selection = TextSelection.fromPosition(
-                        TextPosition(offset: customName.length),
-                      ),
-                    onSubmitted: (val) {
-                      DeviceMarks.setName(d.signature, val);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Device renamed')),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 3. Generate Report Button
+                  
+                  /* Anonymous Feedback Button
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.description),
-                    label: const Text('Generate Case Report'),
+                    icon: const Icon(Icons.feedback_outlined),
+                    label: const Text('Send Anonymous Feedback'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () async {
-                      await ReportsStore.createFromDevice(d);
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Report generated. Check the Reports tab.',
-                          ),
-                        ),
-                      );
-                    },
+                    onPressed: () => _showFeedbackDialog(context, d),
                   ),
+                  const SizedBox(height: 16),
+                  */
+
                 ],
               ),
             ),

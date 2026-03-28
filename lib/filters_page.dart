@@ -28,10 +28,22 @@ class _FiltersPageState extends State<FiltersPage> {
     mainDistance = s.maxMainDistanceFt;
     advancedDistance = s.maxAdvancedDistanceFt;
     minRssi = s.minRssi.toDouble();
-    // hideConnectable = s.hideConnectableNonTrackers;
     filterByRssi = s.filterByRssi;
     rssiThreshold = s.rssiThreshold;
     sortMode = s.sortMode;
+  }
+
+  // Helper method to apply filters and close the page automatically
+  void _applyAndPop() {
+    FiltersModel.apply(
+      maxMainDistanceFt: mainDistance,
+      maxAdvancedDistanceFt: advancedDistance,
+      minRssi: minRssi.round(),
+      filterByRssi: filterByRssi,
+      rssiThreshold: rssiThreshold,
+      sortMode: sortMode,
+    );
+    Navigator.pop(context);
   }
 
   // Build the UI for applying the filters
@@ -42,6 +54,65 @@ class _FiltersPageState extends State<FiltersPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
+          // --- MISSION PROFILE CARD ---
+          Card(
+            color: Colors.blue.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Select Mission Profile',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // PASSIVE PROFILE
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.radar),
+                    label: const Text('Passive (Stalking Search)'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        mainDistance = 50.0;
+                        advancedDistance = 200.0;
+                        minRssi = -100.0;
+                        filterByRssi = true;
+                        rssiThreshold = -90; // Filter signals -90 and lower
+                      });
+                      _applyAndPop();
+                    },
+                  ),
+                  const SizedBox(height: 8),
+
+                  // ACTIVE PROFILE
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.search),
+                    label: const Text('Active (Package Search)'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        mainDistance = 10.0;
+                        advancedDistance = 40.0;
+                        minRssi = -100.0;
+                        filterByRssi = true;
+                        rssiThreshold = -70; // Strict cutoff for packages
+                      });
+                      _applyAndPop();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ----------------------------
           const Text(
             'Main list distance (feet)',
             style: TextStyle(fontWeight: FontWeight.bold),
@@ -64,7 +135,7 @@ class _FiltersPageState extends State<FiltersPage> {
           Slider(
             value: advancedDistance,
             min: 20,
-            max: 200, // Search up to 200ft
+            max: 200,
             divisions: 180,
             label: advancedDistance.toStringAsFixed(0),
             onChanged: (v) => setState(() => advancedDistance = v),
@@ -86,13 +157,6 @@ class _FiltersPageState extends State<FiltersPage> {
           ),
           Text('${minRssi.toStringAsFixed(0)} dBm'),
 
-          /*
-          SwitchListTile(
-            title: const Text('Hide connectable non-trackers'),
-            value: hideConnectable,
-            onChanged: (v) => setState(() => hideConnectable = v),
-          ),
-          */
           const SizedBox(height: 24),
           const _SectionTitle("Filter"),
           _ToggleCard(
@@ -138,7 +202,6 @@ class _FiltersPageState extends State<FiltersPage> {
 
           const SizedBox(height: 18),
 
-          // Informational card explaining the "Suspect" label
           Card(
             elevation: 0,
             color: Colors.grey.shade50,
@@ -155,21 +218,9 @@ class _FiltersPageState extends State<FiltersPage> {
             ),
           ),
 
-          // Apply Filters button that saves the current filter settings to the FiltersModel and closes the FiltersPage
           const SizedBox(height: 24),
           ElevatedButton(
-            onPressed: () {
-              FiltersModel.apply(
-                maxMainDistanceFt: mainDistance,
-                maxAdvancedDistanceFt: advancedDistance,
-                minRssi: minRssi.round(),
-                // hideConnectableNonTrackers: hideConnectable,
-                filterByRssi: filterByRssi,
-                rssiThreshold: rssiThreshold,
-                sortMode: sortMode,
-              );
-              Navigator.pop(context);
-            },
+            onPressed: _applyAndPop, // Uses the new helper method
             child: const Text('Apply Filters'),
           ),
         ],
@@ -317,7 +368,12 @@ class _RssiSlider extends StatelessWidget {
               SizedBox(height: 6),
               _TipBullet(
                 text:
-                    'You may want to keep the threshold high (more negative) if you suspect a tracker is obstructed by multiple barriers (e.g., in an inaccessible part of a car, hidden in a case, etc.).',
+                    'Logarithmic Scale: A 3 dBm change roughly doubles or halves the physical distance to the tracker.',
+              ),
+              SizedBox(height: 6),
+              _TipBullet(
+                text:
+                    'You may want to keep the threshold high (e.g., -70) if you suspect a tracker is hidden inside a vehicle or package.',
               ),
             ],
           ),

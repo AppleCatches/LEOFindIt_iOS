@@ -12,6 +12,7 @@ import 'filters.dart';
 import 'identification_page.dart';
 import 'models.dart';
 import 'reports_store.dart';
+import 'reports_page.dart';
 
 // Initialize the app and manage the overall state
 void main() async {
@@ -39,58 +40,45 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
   int pageIndex = 0;
   DateTime? lastScanTime;
 
-  Timer? _scanCountdownTimer;
-  int _scanSecondsLeft = 0;
+  int _scanSecondsElapsed = 0;
+  Timer? _scanTimer;
+  DateTime _mainListClearTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   StreamSubscription<TrackerDevice>? _bleSub;
   StreamSubscription<AccelerometerEvent>? _motionSub;
-
   double _lastMag = 0;
   final double _movementThreshold = 1.2;
-
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
 
   String get scanTimeLabel {
-    final m = (_scanSecondsLeft ~/ 60).toString();
-    final s = (_scanSecondsLeft % 60).toString().padLeft(2, '0');
+    final m = (_scanSecondsElapsed ~/ 60).toString();
+    final s = (_scanSecondsElapsed % 60).toString().padLeft(2, '0');
     return '$m:$s';
   }
 
-  // Start a countdown timer for the BLE scan
-  void _startScanCountdown() {
-    _scanSecondsLeft = 5 * 60;
-
-    _scanCountdownTimer?.cancel();
-    _scanCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+  void _startScanTimer() {
+    _scanSecondsElapsed = 0;
+    _scanTimer?.cancel();
+    _scanTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-
       if (!scanning) {
-        _scanCountdownTimer?.cancel();
-        _scanCountdownTimer = null;
-        _scanSecondsLeft = 0;
+        _scanTimer?.cancel();
         return;
       }
-
-      if (_scanSecondsLeft > 0) {
-        setState(() => _scanSecondsLeft--);
-      } else {
-        _scanCountdownTimer?.cancel();
-        _scanCountdownTimer = null;
-      }
+      setState(() => _scanSecondsElapsed++);
     });
   }
 
-  // Reset the scan countdown timer when a scan is stopped or completed
-  void _resetScanCountdown() {
-    _scanCountdownTimer?.cancel();
-    _scanCountdownTimer = null;
-    _scanSecondsLeft = 0;
+  void _resetScanTimer() {
+    _scanTimer?.cancel();
+    _scanSecondsElapsed = 0;
   }
 
-  Future<void> _clearDevices() async {
+  // Only clears devices from the main view, keeping advanced scanner intact
+  Future<void> _clearMainList() async {
     setState(() {
-      _devicesBySig.removeWhere((sig, _) => DeviceMarks.getMark(sig) == null);
+      _mainListClearTime = DateTime.now();
     });
   }
 
@@ -137,7 +125,7 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         scanning = false;
         lastScanTime = DateTime.now();
       });
-      _resetScanCountdown();
+      _resetScanTimer();
       return;
     }
 
@@ -162,7 +150,7 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
             scanning = false;
             lastScanTime = DateTime.now();
           });
-          _resetScanCountdown();
+          _resetScanTimer();
           return;
         }
       } catch (_) {
@@ -173,16 +161,17 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
           scanning = false;
           lastScanTime = DateTime.now();
         });
-        _resetScanCountdown();
+        _resetScanTimer();
         return;
       }
 
       if (!mounted || _scanSession != mySession) return;
       setState(() => scanning = true);
       _startMotionDetection();
-      _startScanCountdown();
+      _startScanTimer();
 
-      await Future.delayed(const Duration(minutes: 5));
+      /*
+      // await Future.delayed(const Duration(minutes: 5));
       if (!mounted || _scanSession != mySession) return;
 
       await BleBridge.stopScan();
@@ -194,7 +183,8 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         scanning = false;
         lastScanTime = DateTime.now();
       });
-      _resetScanCountdown();
+      _resetScanTimer();
+      */
     }());
   }
 
@@ -222,7 +212,7 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     _fadeCtrl.dispose();
     _motionSub?.cancel();
     _bleSub?.cancel();
-    _scanCountdownTimer?.cancel();
+    _scanTimer?.cancel();
     super.dispose();
   }
 
@@ -273,7 +263,7 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
             onRescan: toggleScan,
             lastScanTime: lastScanTime,
             scanCountdownLabel: scanTimeLabel,
-            onRefresh: _clearDevices,
+            onRefresh: _clearMainList,
           ),
           IdentificationPage(devices: advancedDevices),
         ];

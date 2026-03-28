@@ -25,7 +25,8 @@ class DistancePage extends StatelessWidget {
     required this.scanning,
     required this.onRescan,
     required this.lastScanTime,
-    required this.scanCountdownLabel, required this.onRefresh,
+    required this.scanCountdownLabel,
+    required this.onRefresh,
   });
 
   // Format the last scan time into a user-friendly string, displaying the time in a 12-hour format with AM/PM
@@ -166,26 +167,26 @@ class DistancePage extends StatelessWidget {
             valueListenable: DeviceMarks.version,
             builder: (_, __, ___) {
               final visibleTrack = track
-                  .where((d) => DeviceMarks.getMark(d.signature) == null) 
+                  .where((d) => DeviceMarks.getMark(d.signature) == null)
                   .toList();
 
               return RefreshIndicator(
-                onRefresh: onRefresh, 
+                onRefresh: onRefresh,
                 child: visibleTrack.isEmpty
-                    ? ListView( 
+                    ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: const [
                           SizedBox(height: 100),
                           Center(
                             child: Text(
-                              'No trackers detected', 
+                              'No trackers detected',
                               style: TextStyle(
                                 fontFamily: 'Inter',
-                                fontSize: 20, 
+                                fontSize: 20,
                                 fontWeight: FontWeight.w500,
-                                color: Colors.grey
-                              )
-                            )
+                                color: Colors.grey,
+                              ),
+                            ),
                           ),
                         ],
                       )
@@ -194,108 +195,109 @@ class DistancePage extends StatelessWidget {
                         itemCount: visibleTrack.length,
                         itemBuilder: (_, i) {
                           final d = visibleTrack[i];
+                          // Notice we use getMark() here now!
                           final mark = DeviceMarks.getMark(d.signature);
                           final isMarked = mark != null;
 
-                        return GestureDetector(
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => SearchPage(device: d),
-                            ),
-                          ),
-                          child: Opacity(
-                            opacity: isMarked ? 0.45 : 1.0,
-                            child: Card(
-                              color: isMarked ? Colors.grey.shade200 : null,
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 13,
+                          return GestureDetector(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SearchPage(device: d),
                               ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.signal_cellular_alt_rounded,
-                                      size: 46,
-                                      color: isMarked
-                                          ? Colors.grey
-                                          : Colors.blueAccent,
-                                    ),
-                                    const SizedBox(width: 20),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            d.displayName,
-                                            style: TextStyle(
-                                              fontFamily: 'Inter',
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 22,
-                                              color: isMarked
-                                                  ? Colors.grey
-                                                  : Colors.black,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            'Distance: ${d.distanceFeet.toStringAsFixed(2)} ft • ${d.distanceFtLabel}',
-                                            style: TextStyle(
-                                              color: isMarked
-                                                  ? Colors.grey
-                                                  : Colors.black,
-                                            ),
-                                          ),
-                                          Text(
-                                            'RSSI: ${d.rssi} dBm',
-                                            style: TextStyle(
-                                              color: isMarked
-                                                  ? Colors.grey
-                                                  : Colors.black,
-                                            ),
-                                          ),
-                                          Text(
-                                            'UUID: ${d.displayUuid}',
-                                            style: TextStyle(
-                                              color: isMarked
-                                                  ? Colors.grey
-                                                  : Colors.black,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Row(
-                                            children: List.generate(
-                                              5,
-                                              (idx) => Icon(
-                                                Icons.signal_cellular_alt,
-                                                size: 20,
-                                                color:
-                                                    idx <
-                                                        _bars(
-                                                          d.smoothedRssi
-                                                              .round(),
-                                                        )
-                                                    ? (isMarked
-                                                          ? Colors.grey
-                                                          : Colors.green)
-                                                    : Colors.grey.shade300,
+                            ),
+                            child: Opacity(
+                              opacity: isMarked ? 0.45 : 1.0,
+                              child: Card(
+                                color: isMarked ? Colors.grey.shade200 : null,
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 13,
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.signal_cellular_alt_rounded,
+                                        size: 46,
+                                        color: isMarked
+                                            ? Colors.grey
+                                            : Colors.blueAccent,
+                                      ),
+                                      const SizedBox(width: 20),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              d.displayName,
+                                              style: TextStyle(
+                                                fontFamily: 'Inter',
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 22,
+                                                color: isMarked
+                                                    ? Colors.grey
+                                                    : Colors.black,
                                               ),
                                             ),
-                                          ),
-                                        ],
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Distance: ${d.distanceFeet.toStringAsFixed(2)} ft • ${(d.distanceFeet / 3.28084).toStringAsFixed(2)} m',
+                                              style: TextStyle(
+                                                color: isMarked
+                                                    ? Colors.grey
+                                                    : Colors.black,
+                                              ),
+                                            ),
+                                            Text(
+                                              'RSSI: ${d.rssi} dBm',
+                                              style: TextStyle(
+                                                color: isMarked
+                                                    ? Colors.grey
+                                                    : Colors.black,
+                                              ),
+                                            ),
+                                            Text(
+                                              'UUID: ${d.displayUuid}',
+                                              style: TextStyle(
+                                                color: isMarked
+                                                    ? Colors.grey
+                                                    : Colors.black,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Row(
+                                              children: List.generate(
+                                                5,
+                                                (idx) => Icon(
+                                                  Icons.signal_cellular_alt,
+                                                  size: 20,
+                                                  color:
+                                                      idx <
+                                                          _bars(
+                                                            d.smoothedRssi
+                                                                .round(),
+                                                          )
+                                                      ? (isMarked
+                                                            ? Colors.grey
+                                                            : Colors.green)
+                                                      : Colors.grey.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                          );
+                        },
+                      ),
               );
             },
           ),

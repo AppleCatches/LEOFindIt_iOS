@@ -120,7 +120,7 @@ class AdvancedScannerView extends StatelessWidget {
                                       "RSSI: $rssi dBm • ${_rssiLabel(rssi)}",
                                     ),
                                     Text(
-                                      "Distance: ${distance.toStringAsFixed(2)} ft • ${d.distance}",
+                                      "Distance: ${distance.toStringAsFixed(2)} ft • ${(distance / 3.28084).toStringAsFixed(2)} m",
                                     ),
                                     Text("UUID: ${d.displayUuid}"),
                                     Text("Rotations: ${d.rotatingMacCount}"),
