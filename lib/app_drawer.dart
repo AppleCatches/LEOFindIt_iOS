@@ -25,7 +25,7 @@ class AppDrawer extends StatefulWidget {
     this.reportsTileKey,
     this.onReplayTutorial,
     this.onShowAllDevices,
-    this.tutorialMode = false,
+    this.tutorialMode = true,
   });
 
   @override
@@ -173,7 +173,7 @@ class _AppDrawerState extends State<AppDrawer> {
                     title: const Text("Tutorial"),
                     onTap: () async {
                       final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool('replay_tutorial', false);
+                      await prefs.setBool('replay_tutorial', true);
                       if (widget.onReplayTutorial != null) {
                         widget.onReplayTutorial!();
                       }

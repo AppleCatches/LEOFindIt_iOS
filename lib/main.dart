@@ -459,6 +459,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         body: 'Press Scan here to stop and start device scanning.',
         showSkip: false,
       ),
+      /*
       tutorialTarget(
         key: _trackerListKey,
         id: 'distance_list',
@@ -468,6 +469,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         yOffset: 110,
         showSkip: false,
       ),
+      */
       tutorialTarget(
         key: _firstTrackerCardKey,
         id: 'open_tracker',
