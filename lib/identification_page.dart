@@ -1,11 +1,9 @@
-// lib/identification_page.dart
-
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'device_marks.dart';
 import 'search_page.dart';
 
-// displays a list of detected tracker devices categorized as Friendly, undesignated, or Suspect
+// displays a list of detected tracker devices categorized as friendly, nonsuspect, suspect, or undesignated
 class IdentificationPage extends StatelessWidget {
   final List<TrackerDevice> devices;
   final GlobalKey? classifyTabsKey;
@@ -29,28 +27,31 @@ class IdentificationPage extends StatelessWidget {
 
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         final qualified = unique.values.where((d) {
-          if (d.distance <= 0) return false;
+          if (d.distanceFeet <= 0) return false;
           if (nowMs - d.lastSeenMs > 30 * 1000) return false;
           return true;
         }).toList();
 
         final suspect = <TrackerDevice>[];
         final friendly = <TrackerDevice>[];
+        final nonsuspect = <TrackerDevice>[];
         final undesignated = <TrackerDevice>[];
 
         for (final d in qualified) {
           final mark = DeviceMarks.getMark(d.signature);
-          if (mark == DeviceMark.friendly) {
-            friendly.add(d);
-          } else if (mark == DeviceMark.suspect) {
+          if (mark == DeviceMark.suspect) {
             suspect.add(d);
-          } else if (mark == DeviceMark.undesignated) {
-            undesignated.add(d);
+          } else if (mark == DeviceMark.friendly) {
+            friendly.add(d);
+          } else if (mark == DeviceMark.nonsuspect) {
+            nonsuspect.add(d);
+          } else {
+            undesignated.add(d); // default = undesignated
           }
         }
 
         return DefaultTabController(
-          length: 3,
+          length: 4,
           child: Column(
             children: [
               Padding(
@@ -63,6 +64,11 @@ class IdentificationPage extends StatelessWidget {
                   children: [
                     _list(context, suspect, empty: 'No suspect trackers yet'),
                     _list(context, friendly, empty: 'No friendly trackers yet'),
+                    _list(
+                      context,
+                      nonsuspect,
+                      empty: 'No nonsuspect trackers yet',
+                    ),
                     _list(
                       context,
                       undesignated,
@@ -150,7 +156,10 @@ class IdentificationPage extends StatelessWidget {
           padding: const EdgeInsets.all(18),
           child: Row(
             children: [
-              buildTrackerImage(d, size: 44),
+              buildTrackerImage(
+                d,
+                size: 44,
+              ), // assuming this is defined elsewhere
               const SizedBox(width: 18),
               Expanded(
                 child: Column(
@@ -166,7 +175,7 @@ class IdentificationPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'UUID: ${DeviceMarks.getMark(d.signature) == DeviceMark.suspect ? d.displayUuid : '...${d.shortUuid}'}',
+                      'UUID: ${d.displayUuid}',
                       style: TextStyle(
                         fontFamily: 'Inter',
                         color: Colors.grey.shade700,
@@ -209,23 +218,14 @@ class IdentificationPage extends StatelessWidget {
       ),
     );
   }
-
-  Color _markColor(DeviceMark? mark) {
-    switch (mark ?? DeviceMark.undesignated) {
-      case DeviceMark.suspect:
-        return const Color(0xFFD9534F);
-      case DeviceMark.friendly:
-        return const Color(0xFF2E7D32);
-      case DeviceMark.undesignated:
-        return const Color(0xFF1500FF);
-    }
-  }
 }
 
 class _MarkTabs extends StatelessWidget {
   const _MarkTabs();
+
   static const _suspect = Color(0xFFD9534F);
   static const _friendly = Color(0xFF2E7D32);
+  static const _nonsuspect = Color(0xFF17A2B8);
   static const _undesignated = Color(0xFF1500FF);
 
   @override
@@ -271,6 +271,7 @@ class _MarkTabs extends StatelessWidget {
         tabs: const [
           _TabPill(label: 'Suspect', color: _suspect),
           _TabPill(label: 'Friendly', color: _friendly),
+          // _TabPill(label: 'Nonsuspect', color: _nonsuspect),
           _TabPill(label: 'Undesignated', color: _undesignated),
         ],
       ),

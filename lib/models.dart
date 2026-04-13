@@ -1,25 +1,24 @@
-// Model for representing detected tracker devices and their properties
+// lib/models.dart
 import 'package:flutter/material.dart';
 import 'device_marks.dart';
 
+// Model for representing detected tracker devices and their properties
 class TrackerDevice {
   final String signature;
   final String id;
   final String kind;
-
   final int rssi;
   final double distanceFeet;
   final int firstSeenMs;
   final int lastSeenMs;
   final int sightings;
   final String rawFrame;
-
   final double smoothedRssi;
   final String localName;
   final bool isConnectable;
   final List<String> serviceUuids;
+  final int rotatingMacCount;
 
-  // Constructor for initializing a TrackerDevice with all required properties
   TrackerDevice({
     required this.signature,
     required this.id,
@@ -34,7 +33,27 @@ class TrackerDevice {
     required this.localName,
     required this.isConnectable,
     required this.serviceUuids,
+    required this.rotatingMacCount,
   });
+
+  TrackerDevice merge(TrackerDevice other) {
+    return TrackerDevice(
+      signature: signature,
+      id: other.id,
+      kind: other.kind,
+      rssi: other.rssi,
+      distanceFeet: other.distanceFeet,
+      firstSeenMs: firstSeenMs,
+      lastSeenMs: other.lastSeenMs,
+      sightings: other.sightings,
+      rawFrame: other.rawFrame,
+      smoothedRssi: other.smoothedRssi,
+      localName: other.localName,
+      isConnectable: other.isConnectable,
+      serviceUuids: other.serviceUuids,
+      rotatingMacCount: other.rotatingMacCount,
+    );
+  }
 
   double get distance => distanceFeet;
   double get distanceMeters => distanceFeet / 3.28084;
@@ -43,90 +62,53 @@ class TrackerDevice {
 
   bool get isLikelyAirTag => kind == 'AIRTAG';
   bool get isLikelyTile => kind == 'TILE';
-
-  // Note: We keep these extra checks because the iOS Swift scanner
-  // outputs these specific strings, unlike the Android Kotlin scanner.
   bool get isLikelySamsung =>
       kind == 'SAMSUNG' ||
       kind == 'SAMSUNG_DEVICE' ||
       kind == 'SAMSUNG_SMARTTAG';
 
-  // Fallback heuristic for Apple devices due to CoreBluetooth masking
-  bool get isPossibleAirTag {
-    final n = localName.toLowerCase().trim();
-    if (isLikelyAirTag) return true;
-    final looksUnnamed = n.isEmpty || n == 'undesignated';
-
-    final notObviousAppleHost =
-        !n.contains('iphone') &&
-        !n.contains('ipad') &&
-        !n.contains('macbook') &&
-        !n.contains('airpods') &&
-        !n.contains('watch') &&
-        !n.contains('imac') &&
-        !n.contains('apple tv');
-
-    final hasTrackerLikePresence = sightings >= 2;
-    final signalIsRelevant = smoothedRssi >= -85;
-    final hasAppleLikeSignature =
-        kind == 'APPLE_DEVICE' ||
-        rawFrame.toLowerCase().contains('4c00') ||
-        serviceUuids.isNotEmpty;
-
-    return (kind == 'APPLE_DEVICE' || kind == 'UNDESIGNATED') &&
-        looksUnnamed &&
-        !isConnectable &&
-        hasTrackerLikePresence &&
-        signalIsRelevant &&
-        hasAppleLikeSignature &&
-        notObviousAppleHost;
+  // Legacy getters used in older pages
+  String get displayUuid {
+    if (signature.length <= 8) return signature;
+    return signature.substring(signature.length - 8);
   }
 
-  bool get isFound => distanceFeet <= 0.10;
+  String get shortUuid {
+    if (signature.length <= 8) return signature;
+    return signature.substring(signature.length - 8);
+  }
+
+  String get displayMac => shortUuid;
+
+  // FINAL TIGHTENED LOGIC – only real close AirTags will trigger
+  bool get isPossibleAirTag {
+    if (isLikelyAirTag) return true;
+    final n = localName.toLowerCase().trim();
+    if (n.isNotEmpty) return false; // AirTags always empty name
+    final isVeryClose = smoothedRssi >= -52;
+    final hasEnoughSightings = sightings >= 5;
+    return kind == 'APPLE_DEVICE' &&
+        isConnectable &&
+        isVeryClose &&
+        hasEnoughSightings;
+  }
 
   String get displayName {
-    // Keep custom name lookup for iOS
     final customName = DeviceMarks.getName(signature);
     if (customName != null && customName.isNotEmpty) return customName;
 
-    // Matches Android's exact naming convention
-    if (isLikelyAirTag) return 'Apple AirTag';
+    if (isLikelyAirTag || isPossibleAirTag) {
+      return 'Apple AirTag';
+    }
+
+    if (kind == 'APPLE_DEVICE') {
+      return 'Undesignated Device'; // ← changed as requested
+    }
+
     if (isLikelyTile) return 'Life360 Tile';
     if (isLikelySamsung) return 'Samsung SmartTag';
-    if (kind.contains('APPLE') || isPossibleAirTag) return 'Apple Find My';
 
-    return 'Undesignated Tracker';
-  }
-
-  String get displayUuid => signature;
-
-  String get shortUuid {
-    if (displayUuid.length >= 4) {
-      return displayUuid.substring(displayUuid.length - 4);
-    }
-    return displayUuid;
-  }
-
-  String get displayMac => displayUuid;
-  int get rotatingMacCount => 0;
-
-  TrackerDevice merge(TrackerDevice newer) {
-    final smoothed = (smoothedRssi * 0.4) + (newer.rssi * 0.6);
-    return TrackerDevice(
-      signature: signature,
-      id: id,
-      kind: newer.kind.isNotEmpty ? newer.kind : kind,
-      rssi: newer.rssi,
-      distanceFeet: newer.distanceFeet,
-      firstSeenMs: firstSeenMs,
-      lastSeenMs: newer.lastSeenMs,
-      sightings: sightings + 1,
-      rawFrame: newer.rawFrame,
-      smoothedRssi: smoothed,
-      localName: newer.localName,
-      isConnectable: newer.isConnectable,
-      serviceUuids: newer.serviceUuids,
-    );
+    return 'Undesignated Tracker'; // everything else
   }
 
   factory TrackerDevice.fromNative(Map<String, dynamic> m) {
@@ -145,6 +127,7 @@ class TrackerDevice {
       localName: (m['localName'] as String?) ?? '',
       isConnectable: (m['isConnectable'] as bool?) ?? false,
       serviceUuids: ((m['serviceUuids'] as List?) ?? []).cast<String>(),
+      rotatingMacCount: (m['rotatingMacCount'] as int?) ?? 0,
     );
   }
 }
@@ -152,23 +135,19 @@ class TrackerDevice {
 // Tracker icons
 Widget buildTrackerImage(TrackerDevice d, {double size = 44}) {
   String assetName = 'assets/unknown.png';
-  if (d.isLikelyAirTag) {
+  if (d.isLikelyAirTag || d.isPossibleAirTag) {
     assetName = 'assets/airtag.png';
   } else if (d.isLikelyTile) {
     assetName = 'assets/tile.png';
   } else if (d.isLikelySamsung) {
     assetName = 'assets/smarttag.png';
-  } else if (d.kind.contains('APPLE') || d.isPossibleAirTag) {
-    assetName = 'assets/airtag.png';
   }
-
   return Image.asset(
     assetName,
     width: size,
     height: size,
     fit: BoxFit.contain,
     errorBuilder: (context, error, stackTrace) {
-      // Fallback if the team hasn't added the images to the /assets folder yet
       return Icon(
         Icons.bluetooth_searching,
         size: size,

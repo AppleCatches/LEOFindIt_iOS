@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -108,6 +107,7 @@ class TrackerReport {
 
 class ReportsStore {
   static const MethodChannel _storage = MethodChannel("leo_find_it/storage");
+
   static final ValueNotifier<List<TrackerReport>> notifier =
       ValueNotifier<List<TrackerReport>>([]);
 
@@ -117,6 +117,7 @@ class ReportsStore {
       if (!await f.exists()) return;
       final txt = await f.readAsString();
       if (txt.trim().isEmpty) return;
+
       final decoded = jsonDecode(txt);
       if (decoded is! List) return;
 
@@ -180,6 +181,7 @@ class ReportsStore {
       if (r.reportId != reportId) return r;
       return r.copyWith(teamFeedback: feedback);
     }).toList();
+
     notifier.value = updated;
     await _persist();
   }
@@ -215,6 +217,7 @@ class ReportsStore {
     final markLabel = switch (mark) {
       DeviceMark.suspect => "Suspect",
       DeviceMark.friendly => "Friendly",
+      DeviceMark.nonsuspect => "Nonsuspect", // ← added
       DeviceMark.undesignated => "Undesignated",
       null => "Unmarked",
     };
@@ -225,7 +228,6 @@ class ReportsStore {
     return """
 LeoFindIt Case Report
 -----------------------
-
 Report ID: ${r.reportId}
 Created: $created
 
@@ -241,14 +243,14 @@ Detection Summary
 RSSI: ${r.rssi} dBm
 Distance estimate: ${r.distanceFeet.toStringAsFixed(1)} ft
 First seen: $firstSeen
-Last seen:  $lastSeen
+Last seen: $lastSeen
 
 User Classification
 -------------------
 Marked as: $markLabel
 
 User Notes (no personal info)
--------------------
+-----------------------------
 $notesBlock
 
 Raw BLE Payload (hex)
@@ -258,7 +260,7 @@ ${r.rawFrame.isEmpty ? "N/A" : r.rawFrame}
 Disclaimer
 ----------
 - RSSI and distance are estimates and can vary by environment.
-- This report does not contain gps location.
+- This report does not contain GPS location.
 """;
   }
 
@@ -289,6 +291,7 @@ Disclaimer
       if (x.reportId != r.reportId) return x;
       return x.copyWith(exportedUriTxt: uri);
     }).toList();
+
     notifier.value = updated;
     await _persist();
     return uri;
@@ -297,7 +300,7 @@ Disclaimer
   static Future<String> saveRawJsonToDownloads(TrackerReport r) async {
     final safeTs = _safeTimestamp(r.createdAt);
     final filename = "leo_evidence_${safeTs}_${r.reportId}.json";
-    final jsonPretty = const JsonEncoder.withIndent("  ").convert(r.toJson());
+    final jsonPretty = const JsonEncoder.withIndent(" ").convert(r.toJson());
 
     String uri = "";
     try {
@@ -321,6 +324,7 @@ Disclaimer
       if (x.reportId != r.reportId) return x;
       return x.copyWith(exportedUriJson: uri);
     }).toList();
+
     notifier.value = updated;
     await _persist();
     return uri;

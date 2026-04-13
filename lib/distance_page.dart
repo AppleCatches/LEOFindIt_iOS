@@ -84,7 +84,6 @@ class DistancePage extends StatelessWidget {
                   final isPassive =
                       filters.maxMainDistanceFt == 50.0 &&
                       filters.rssiThreshold == -90;
-
                   return Row(
                     children: [
                       Expanded(

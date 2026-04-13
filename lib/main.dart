@@ -1,10 +1,10 @@
+// lib/main.dart
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
-
 import 'ble_bridge.dart';
 import 'models.dart';
 import 'distance_page.dart';
@@ -15,7 +15,6 @@ import 'filters.dart';
 import 'reports_store.dart';
 import 'search_page.dart';
 import 'app_tutorial.dart';
-import 'advanced_scanner_view.dart';
 
 // Initialize the app and manage the overall state
 void main() async {
@@ -34,27 +33,23 @@ class LeoFindIt extends StatefulWidget {
 
 class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
   final Map<String, TrackerDevice> _devicesBySig = {};
-
   bool scanning = false;
   int pageIndex = 0;
   DateTime? lastScanTime;
   DateTime? scanStartTime;
-
   int _scanSession = 0;
   int _scanSecondsElapsed = 0;
   Timer? _scanTimer;
   DateTime _mainListClearTime = DateTime.fromMillisecondsSinceEpoch(0);
-
   StreamSubscription<TrackerDevice>? _bleSub;
   StreamSubscription<AccelerometerEvent>? _motionSub;
   double _lastMag = 0;
-  final double _movementThreshold = 1.2;
-
+  final double _movementThrelaptopld = 1.2;
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
   late AnimationController _blinkCtrl;
 
-    // 10-Second Sorting Validity State
+  // 10-Second Sorting Validity State
   List<String> _displayOrder = [];
   DateTime _lastSortTime = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -67,7 +62,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
   final GlobalKey _drawerButtonKey = GlobalKey();
   final GlobalKey _drawerFiltersKey = GlobalKey();
   final GlobalKey _drawerReportsKey = GlobalKey();
-
   BuildContext? _materialContext;
   bool _tutorialRunning = false;
 
@@ -87,6 +81,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
       localName: '',
       isConnectable: false,
       serviceUuids: [],
+      rotatingMacCount: 0, // ← FIXED: required parameter added
     );
   }
 
@@ -113,6 +108,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     _scanTimer?.cancel();
     _scanSecondsElapsed = 0;
   }
+
   // Only clears devices from the main view, keeping advanced scanner intact
   Future<void> _clearMainList() async {
     setState(() {
@@ -120,18 +116,15 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     });
   }
 
-    // Toggle the BLE scanning state when the user initiates a scan or stops it, managing the scan session and updating the UI accordingly
   @override
   void initState() {
     super.initState();
-
     _fadeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 650),
     );
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
-
     _blinkCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -224,24 +217,28 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
       ),
     );
   }
-  
+
   // 10-Second RSSI validity sorting
   List<TrackerDevice> get devices {
     final now = DateTime.now();
-    if (now.difference(_lastSortTime).inSeconds >= 10 ||
-        _displayOrder.isEmpty) {
+    final nowMs = now.millisecondsSinceEpoch;
+
+    // Refresh sort every 2 seconds so "last seen" updates smoothly
+    if (now.difference(_lastSortTime).inSeconds >= 2 || _displayOrder.isEmpty) {
       final list = _devicesBySig.values.toList()
         ..sort((a, b) => b.smoothedRssi.compareTo(a.smoothedRssi));
       _displayOrder = list.map((d) => d.signature).toList();
       _lastSortTime = now;
     }
+
+    // Only show devices that have been seen for at least 10 seconds
     return _displayOrder
         .where(_devicesBySig.containsKey)
         .map((sig) => _devicesBySig[sig]!)
+        .where((d) => nowMs - d.firstSeenMs >= 10000) // ← 10 second hold
         .toList();
   }
 
-  // Toggle the BLE scanning state when the user initiates a scan or stops it, managing the scan session and updating the UI accordingly
   Future<void> toggleScan() async {
     if (_tutorialRunning) return;
     if (scanning) {
@@ -257,7 +254,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
       _resetScanTimer();
       return;
     }
-
     final mySession = ++_scanSession;
     try {
       final ok = await BleBridge.startScan();
@@ -288,7 +284,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
       _resetScanTimer();
       return;
     }
-
     if (!mounted || _scanSession != mySession) return;
     setState(() {
       scanning = true;
@@ -298,7 +293,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     _startScanTimer();
   }
 
-  // Start motion detection to monitor device movement and potentially trigger BLE scans based on significant changes in accelerometer data
   void _startMotionDetection() {
     _motionSub = accelerometerEventStream().listen((event) {
       if (!scanning) return;
@@ -314,10 +308,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     final prefs = await SharedPreferences.getInstance();
     final seen = prefs.getBool('replay_tutorial') ?? false;
     if (seen) {
-      // Must pop after the frame to avoid layout errors
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showMissionPrompt();
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showMissionPrompt());
       return;
     }
     if (_materialContext == null) return;
@@ -332,48 +323,42 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
   Future<void> _showTutorialStartPrompt() async {
     final dialogContext = _materialContext;
     if (dialogContext == null) return;
-
     await showDialog(
       context: dialogContext,
       barrierDismissible: false,
-      builder: (_) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Quick Start Guide',
+          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          'Would you like a quickstart walkthrough of the app?',
+          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _markTutorialSeen();
+              if (_navigatorKey.currentState != null)
+                _navigatorKey.currentState!.pop();
+              _showMissionPrompt();
+            },
+            child: const Text('Skip'),
           ),
-          title: const Text(
-            'Quick Start Guide',
-            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w800),
+          ElevatedButton(
+            onPressed: () {
+              if (_navigatorKey.currentState != null)
+                _navigatorKey.currentState!.pop();
+              Future.delayed(const Duration(milliseconds: 250), () {
+                _markTutorialSeen();
+                _startQuickGuide();
+              });
+            },
+            child: const Text('Start Guide'),
           ),
-          content: const Text(
-            'Would you like a quickstart walkthrough of the app?',
-            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await _markTutorialSeen();
-                if (_navigatorKey.currentState != null) {
-                  _navigatorKey.currentState!.pop();
-                }
-                _showMissionPrompt();
-              },
-              child: const Text('Skip'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (_navigatorKey.currentState != null) {
-                  _navigatorKey.currentState!.pop();
-                }
-                await Future.delayed(const Duration(milliseconds: 250));
-                await _markTutorialSeen();
-                await _startQuickGuide();
-              },
-              child: const Text('Start Guide'),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -381,16 +366,12 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     final coachContext = _materialContext;
     if (coachContext == null || targets.isEmpty) return false;
     final completer = Completer<bool>();
-
     final coach = TutorialCoachMark(
       targets: targets,
       colorShadow: Colors.black,
       opacityShadow: 0.78,
       paddingFocus: 10,
       hideSkip: true,
-      onClickTarget: (target) {
-        // Tapping the target advances the tutorial
-      },
       onFinish: () {
         if (!completer.isCompleted) completer.complete(true);
       },
@@ -406,7 +387,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
 
   Future<void> _startQuickGuide() async {
     if (_tutorialRunning || !mounted) return;
-
     if (scanning) {
       await BleBridge.stopScan();
       await _motionSub?.cancel();
@@ -417,39 +397,28 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         scanStartTime = null;
       });
     }
-
     setState(() {
       pageIndex = 0;
       _tutorialRunning = true;
     });
-
-    // Give UI time to paint the dummy widget
     await Future.delayed(const Duration(milliseconds: 600));
-
     await _runDistanceTutorial();
     if (!mounted) return;
-
     await _openSearchTutorialFromDemoTracker();
     if (!mounted) return;
-
     setState(() => pageIndex = 1);
     await Future.delayed(const Duration(milliseconds: 900));
-
     await _runClassifyTutorial();
     if (!mounted) return;
-
     await _runDrawerTutorial();
     if (!mounted) return;
-
     setState(() {
       pageIndex = 0;
       _tutorialRunning = false;
     });
-
     _showMissionPrompt();
   }
 
-  // Force sequence: scan button -> tracker list -> open tracker card
   Future<void> _runDistanceTutorial() async {
     await _showCoach([
       tutorialTarget(
@@ -459,17 +428,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         body: 'Press Scan here to stop and start device scanning.',
         showSkip: false,
       ),
-      /*
-      tutorialTarget(
-        key: _trackerListKey,
-        id: 'distance_list',
-        title: 'Detected tags',
-        body:
-            'Tags will show up here along with signal strength, name, and distance.',
-        yOffset: 110,
-        showSkip: false,
-      ),
-      */
       tutorialTarget(
         key: _firstTrackerCardKey,
         id: 'open_tracker',
@@ -532,7 +490,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     await Future.delayed(const Duration(milliseconds: 300));
   }
 
-  // Clean up resources such as animation controllers and stream subscriptions when the widget is disposed to prevent memory leaks
   @override
   void dispose() {
     _fadeCtrl.dispose();
@@ -543,7 +500,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // Build the main UI of the app, including the navigation between different pages (DistancePage and IdentificationPage) and displaying the list of detected devices based on the current filters and sorting options
   @override
   Widget build(BuildContext context) {
     final trackedDevices = devices
@@ -556,7 +512,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
               d.kind.contains('APPLE'),
         )
         .toList();
-
     final tutorialTrackedDevices = _tutorialRunning
         ? <TrackerDevice>[_demoTutorialDevice]
         : trackedDevices;
@@ -567,7 +522,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         final unmarkedDevices = devices
             .where((d) => DeviceMarks.getMark(d.signature) == null)
             .toList();
-
         final advancedDevices = unmarkedDevices
             .where((d) => d.distanceFeet <= filters.maxAdvancedDistanceFt)
             .where((d) => d.rssi >= filters.minRssi)
@@ -575,7 +529,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
               (d) => !filters.filterByRssi || d.rssi >= filters.rssiThreshold,
             )
             .toList();
-
         final nearDevices =
             advancedDevices
                 .where((d) => d.distanceFeet <= filters.maxMainDistanceFt)
@@ -615,7 +568,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
                   classifyTabsKey: _classifyTabsKey,
                 ),
               ];
-
               return FadeTransition(
                 opacity: _fadeAnim,
                 child: Scaffold(
@@ -625,28 +577,11 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
                     reportsTileKey: _drawerReportsKey,
                     tutorialMode: _tutorialRunning,
                     onReplayTutorial: () {
-                      Navigator.pop(context);
-                      _startQuickGuide();
-                    },
-                    onShowAllDevices: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => FractionallySizedBox(
-                          heightFactor: 0.92,
-                          child: ClipRRect(
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(18),
-                            ),
-                            child: AdvancedScannerView(
-                              devices: advancedDevices,
-                              scanning: scanning,
-                              lastScanTime: lastScanTime,
-                            ),
-                          ),
-                        ),
-                      );
+                      // Close drawer first, then start tutorial
+                      _scaffoldKey.currentState?.closeDrawer();
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        if (mounted) _startQuickGuide();
+                      });
                     },
                   ),
                   appBar: AppBar(

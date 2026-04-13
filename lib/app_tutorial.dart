@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 
+/// Creates a nice-looking tutorial target for TutorialCoachMark
 TargetFocus tutorialTarget({
   required GlobalKey key,
   required String id,
@@ -62,12 +63,14 @@ TargetFocus tutorialTarget({
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      // Skip button is intentionally disabled after the user starts the guide
                       /*
                       if (showSkip)
                         TextButton(
                           onPressed: controller.skip,
                           child: const Text('Skip'),
-                        ),*/
+                        ),
+                      */
                       const SizedBox(width: 8),
                       ElevatedButton(
                         onPressed: controller.next,
@@ -85,6 +88,7 @@ TargetFocus tutorialTarget({
   );
 }
 
+/// Blinks / pulses a widget when tutorial mode is active (used in AppDrawer)
 class TutorialBlinker extends StatefulWidget {
   final Widget child;
   final bool isTutorialMode;

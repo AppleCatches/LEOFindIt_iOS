@@ -1,9 +1,9 @@
+// lib/app_drawer.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'quick_start_page.dart';
 import 'advanced_search_help_page.dart';
 import 'tips_page.dart';
@@ -16,15 +16,12 @@ class AppDrawer extends StatefulWidget {
   final GlobalKey<State<StatefulWidget>>? filtersTileKey;
   final GlobalKey<State<StatefulWidget>>? reportsTileKey;
   final VoidCallback? onReplayTutorial;
-  final VoidCallback? onShowAllDevices;
   final bool tutorialMode;
-
   const AppDrawer({
     super.key,
     this.filtersTileKey,
     this.reportsTileKey,
     this.onReplayTutorial,
-    this.onShowAllDevices,
     this.tutorialMode = true,
   });
 
@@ -47,7 +44,7 @@ class _AppDrawerState extends State<AppDrawer> {
     final info = await PackageInfo.fromPlatform();
     if (mounted) {
       setState(() {
-        _appVersion = info.version; //'+${info.buildNumber}';
+        _appVersion = info.version;
       });
     }
   }
@@ -57,26 +54,22 @@ class _AppDrawerState extends State<AppDrawer> {
     setState(() {
       _isCheckingForUpdate = true;
     });
-
     // Brief simulated network delay so the user sees the UI react
     await Future.delayed(const Duration(seconds: 1));
     if (!mounted) return;
     setState(() {
       _isCheckingForUpdate = false;
     });
-
     // --- STORE LINK LOGIC ---
     // ios: Replace 'YOUR_APP_STORE_ID' with your actual 10-digit Apple App Store ID
     // android: Replace 'com.leofindit.app' with your Google Play Store package name if different.
     const String appStoreId = 'YOUR_APP_STORE_ID';
     const String playStoreId = 'com.leofindit.app';
-
     final Uri storeUrl = Platform.isIOS
         ? Uri.parse("https://apps.apple.com/app/id$appStoreId")
         : Uri.parse(
             "https://play.google.com/store/apps/details?id=$playStoreId",
           );
-
     try {
       if (await canLaunchUrl(storeUrl)) {
         await launchUrl(storeUrl, mode: LaunchMode.externalApplication);
@@ -109,34 +102,9 @@ class _AppDrawerState extends State<AppDrawer> {
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.only(
-                  top: 20,
-                ), // Reduced gap at the top
+                padding: const EdgeInsets.only(top: 20), // matches screenshot
                 children: [
-                  /*
-                  ListTile(
-                    leading: const Icon(
-                      Icons.search,
-                      color: Colors.blueAccent,
-                      size: 28,
-                    ),
-                    title: const Text(
-                      "Show All Devices",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueAccent,
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      if (widget.onShowAllDevices != null) {
-                        widget.onShowAllDevices!();
-                      }
-                    },
-                  ),
-                  const Divider(height: 24, thickness: 1),
-                  */
+                  // === HELP & GUIDANCE ===
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
                     child: Text(
@@ -179,7 +147,10 @@ class _AppDrawerState extends State<AppDrawer> {
                       }
                     },
                   ),
+
                   const Divider(height: 24, thickness: 1),
+
+                  // === TOOLS ===
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
                     child: Text(
@@ -228,7 +199,8 @@ class _AppDrawerState extends State<AppDrawer> {
                 ],
               ),
             ),
-            // --- DYNAMIC VERSION & UPDATE AREA ---
+
+            // --- DYNAMIC VERSION & UPDATE AREA (AT THE VERY BOTTOM) ---
             Padding(
               padding: const EdgeInsets.symmetric(
                 vertical: 16.0,

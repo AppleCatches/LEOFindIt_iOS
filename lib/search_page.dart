@@ -1,9 +1,9 @@
+// lib/search_page.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import 'device_marks.dart';
 import 'models.dart';
 import 'ble_bridge.dart';
@@ -18,55 +18,54 @@ class SearchPage extends StatefulWidget {
     this.tutorialMode = false,
     super.key,
   });
+
   @override
   State<SearchPage> createState() => _SearchPageState();
 }
 
 enum ProximityBand { immediate, nearby, close, far, unknown }
 
-class _SearchPageState extends State<SearchPage> {
+class _SearchPageState extends State<SearchPage>
+    with SingleTickerProviderStateMixin {
   TrackerDevice? live;
   StreamSubscription<TrackerDevice>? sub;
-
   Timer? _uiTimer;
   TrackerDevice? _pending;
   static const int _uiFrameMs = 60;
-
   double? _displayDistanceFt;
 
-  double? _dirRssi;
-  double _rssiVelocity = 0.0;
-  int _lastDirChangeMs = 0;
-
-  static const double _rssiEmaAlpha = 0.18;
-  static const double _velocityAlpha = 0.25;
-  static const double _deadband = 0.25;
-  static const int _directionHoldMs = 400;
-
-  String direction = 'Hold steady';
-  IconData arrow = Icons.navigation;
+  late AnimationController _pulseCtrl;
+  late Animation<double> _pulseAnim;
 
   Timer? _ageTick;
   int _nowMs = DateTime.now().millisecondsSinceEpoch;
 
+  bool _manuallyFound = false;
+  DateTime? _timeFound;
+
   final GlobalKey _distanceInfoKey = GlobalKey();
   final GlobalKey _signalStrengthKey = GlobalKey();
   final GlobalKey _categoryTabsKey = GlobalKey();
-
-  bool _isManuallyFound = false;
-  DateTime? _timeFound;
 
   @override
   void initState() {
     super.initState();
     live = widget.device;
 
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _pulseAnim = Tween<double>(
+      begin: 1.0,
+      end: 1.04,
+    ).chain(CurveTween(curve: Curves.easeInOut)).animate(_pulseCtrl);
+
     if (!widget.tutorialMode) {
       sub = BleBridge.detections.listen((d) {
         if (d.signature != widget.device.signature) return;
         _pending = d;
       });
-
       _uiTimer = Timer.periodic(const Duration(milliseconds: _uiFrameMs), (_) {
         if (!mounted || _pending == null) return;
         setState(() {
@@ -93,6 +92,25 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
+  // Smooth Android-style distance (kept exactly as before)
+  void _updateState(TrackerDevice d) {
+    final rawDist = d.distanceFeet;
+    _displayDistanceFt ??= rawDist;
+
+    final distanceDelta = rawDist - _displayDistanceFt!;
+    const maxUiStepFt = 0.6;
+
+    double clampedDistance = rawDist;
+    if (distanceDelta.abs() > maxUiStepFt) {
+      clampedDistance =
+          _displayDistanceFt! +
+          (distanceDelta.isNegative ? -maxUiStepFt : maxUiStepFt);
+    }
+
+    _displayDistanceFt =
+        (_displayDistanceFt! * 0.96) + (clampedDistance * 0.04);
+  }
+
   Future<bool> _showCoach(List<TargetFocus> targets) async {
     if (!mounted || targets.isEmpty) return false;
     final completer = Completer<bool>();
@@ -107,7 +125,7 @@ class _SearchPageState extends State<SearchPage> {
       },
       onSkip: () {
         if (!completer.isCompleted) completer.complete(false);
-        return true;
+        return true; // ← REQUIRED by the library
       },
     );
     await Future.delayed(const Duration(milliseconds: 100));
@@ -137,7 +155,7 @@ class _SearchPageState extends State<SearchPage> {
         id: 'search_categories',
         title: 'Tracker categories',
         body:
-            'You can put a tracker in three categories: Friendly, Undesignated, and Suspect. If you use Suspect, it will create a report.',
+            'You can put a tracker in three categories: Friendly, Undesignated, and Suspect.',
         align: ContentAlign.top,
         showSkip: false,
       ),
@@ -191,53 +209,17 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
-  void _updateState(TrackerDevice d) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final rawDist = d.distanceFeet;
-
-    _displayDistanceFt ??= rawDist;
-    _displayDistanceFt = (_displayDistanceFt! * 0.90) + (rawDist * 0.10);
-
-    final rawRssi = d.rssi.toDouble();
-    _dirRssi ??= rawRssi;
-
-    final prevRssi = _dirRssi!;
-    _dirRssi = (_dirRssi! * (1 - _rssiEmaAlpha)) + (rawRssi * _rssiEmaAlpha);
-
-    final delta = _dirRssi! - prevRssi;
-    _rssiVelocity =
-        (_rssiVelocity * (1 - _velocityAlpha)) + (delta * _velocityAlpha);
-
-    if (_rssiVelocity.abs() < _deadband) {
-      direction = 'Hold steady';
-      arrow = Icons.navigation;
-      return;
-    }
-
-    if (now - _lastDirChangeMs < _directionHoldMs) return;
-
-    if (_rssiVelocity > 0) {
-      direction = 'Getting closer';
-      arrow = Icons.arrow_upward;
-      _lastDirChangeMs = now;
-    } else {
-      direction = 'Moving away';
-      arrow = Icons.arrow_downward;
-      _lastDirChangeMs = now;
-    }
-  }
-
   void _markFound(TrackerDevice d) async {
     await BleBridge.stopScan();
     setState(() {
-      _isManuallyFound = true;
+      _manuallyFound = true;
       _timeFound = DateTime.now();
     });
+    _pulseCtrl.repeat(reverse: true);
   }
 
   void _submitReport(TrackerDevice d) {
     final ctrl = TextEditingController();
-
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -258,31 +240,21 @@ class _SearchPageState extends State<SearchPage> {
               const SizedBox(height: 12),
               Text(
                 'Classified Suspect: ${DateTime.now().toString().split('.')[0]}',
-                style: const TextStyle(fontSize: 13),
               ),
               Text(
                 'UUID: ...${d.shortUuid}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               Text(
                 'First Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.firstSeenMs).toString().split('.')[0]}',
-                style: const TextStyle(fontSize: 13),
               ),
               Text(
                 'Last Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.lastSeenMs).toString().split('.')[0]}',
-                style: const TextStyle(fontSize: 13),
               ),
               Text(
                 'Marked Found: ${_timeFound?.toString().split('.')[0] ?? "N/A"}',
-                style: const TextStyle(fontSize: 13),
               ),
-              Text(
-                'Last Distance: ${d.distanceFeet.toStringAsFixed(1)} ft',
-                style: const TextStyle(fontSize: 13),
-              ),
+              Text('Last Distance: ${d.distanceFeet.toStringAsFixed(1)} ft'),
               const SizedBox(height: 12),
               const Text(
                 'Suggest: Screen shot this report, photograph the tag where found, and zoom in to photograph the tag serial number.',
@@ -295,7 +267,6 @@ class _SearchPageState extends State<SearchPage> {
               const SizedBox(height: 12),
               const Text(
                 'Please include a sentence stating the crime and resolution and any app feedback below:',
-                style: TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 6),
               TextField(
@@ -318,15 +289,13 @@ class _SearchPageState extends State<SearchPage> {
           TextButton(
             onPressed: () async {
               final body =
-                  "LeoFindIt Suspect Report:\nUUID: ...${d.shortUuid}\nFirst Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.firstSeenMs)}\nLast Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.lastSeenMs)}\nFound: ${_timeFound}\nLast Distance: ${d.distanceFeet.toStringAsFixed(1)} ft\n\nNotes: ${ctrl.text}";
+                  "LeoFindIt Suspect Report:\nUUID: ...${d.shortUuid}\nFirst Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.firstSeenMs)}\nLast Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.lastSeenMs)}\nFound: $_timeFound\nLast Distance: ${d.distanceFeet.toStringAsFixed(1)} ft\n\nNotes: ${ctrl.text}";
               final uri = Uri.parse(
-                "mailto:feedback@leofindit.com?subject=${Uri.encodeComponent('LeoFindIt Suspect Report')}&body=${Uri.encodeComponent(body)}",
+                "mailto:feedback@leofindit.com?subject=LeoFindIt Suspect Report&body=${Uri.encodeComponent(body)}",
               );
               try {
                 await launchUrl(uri);
-              } catch (e) {
-                // Ignore failure if emulator doesn't support Mail
-              }
+              } catch (_) {}
               if (mounted) Navigator.pop(ctx);
             },
             child: const Text('Email'),
@@ -334,15 +303,13 @@ class _SearchPageState extends State<SearchPage> {
           ElevatedButton(
             onPressed: () async {
               final body =
-                  "LeoFindIt Suspect Report:\nUUID: ...${d.shortUuid}\nFirst Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.firstSeenMs)}\nLast Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.lastSeenMs)}\nFound: ${_timeFound}\nLast Distance: ${d.distanceFeet.toStringAsFixed(1)} ft\n\nNotes: ${ctrl.text}";
+                  "LeoFindIt Suspect Report:\nUUID: ...${d.shortUuid}\nFirst Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.firstSeenMs)}\nLast Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.lastSeenMs)}\nFound: $_timeFound\nLast Distance: ${d.distanceFeet.toStringAsFixed(1)} ft\n\nNotes: ${ctrl.text}";
               final uri = Uri.parse(
                 "sms:9383686348?body=${Uri.encodeComponent(body)}",
               );
               try {
                 await launchUrl(uri);
-              } catch (e) {
-                // Ignore failure if emulator doesn't support SMS
-              }
+              } catch (_) {}
               if (mounted) Navigator.pop(ctx);
             },
             child: const Text('SMS'),
@@ -357,6 +324,7 @@ class _SearchPageState extends State<SearchPage> {
     sub?.cancel();
     _uiTimer?.cancel();
     _ageTick?.cancel();
+    _pulseCtrl.dispose();
     super.dispose();
   }
 
@@ -367,6 +335,11 @@ class _SearchPageState extends State<SearchPage> {
     final color = _bandColor(band);
     final DeviceMark? mark = DeviceMarks.getMark(d.signature);
 
+    final Color circleColor = _manuallyFound ? const Color(0xFF2E7D32) : color;
+    final IconData centerIcon = _manuallyFound
+        ? Icons.check_rounded
+        : Icons.navigation_rounded;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(d.displayName, overflow: TextOverflow.ellipsis),
@@ -376,26 +349,35 @@ class _SearchPageState extends State<SearchPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (!_isManuallyFound) ...[
-                Container(
-                  width: 170,
-                  height: 170,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF0996D1), Color(0xFF2084E8)],
+              if (!_manuallyFound) ...[
+                const SizedBox(height: 30),
+
+                // ANDROID-STYLE LARGE COLORED CIRCLE ICON (exactly what Android uses)
+                ScaleTransition(
+                  scale: _pulseCtrl.value > 1.0
+                      ? _pulseAnim
+                      : const AlwaysStoppedAnimation(1.0),
+                  child: Container(
+                    width: 170,
+                    height: 170,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: circleColor,
                     ),
+                    child: Icon(centerIcon, size: 90, color: Colors.white),
                   ),
-                  child: Icon(arrow, size: 90, color: Colors.white),
                 ),
+
                 const SizedBox(height: 22),
                 Text(
-                  direction,
+                  _bandLabel(band),
                   style: const TextStyle(
+                    fontFamily: 'Inter',
                     fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+
                 const SizedBox(height: 8),
                 TutorialBlinker(
                   isTutorialMode: widget.tutorialMode,
@@ -413,51 +395,61 @@ class _SearchPageState extends State<SearchPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Distance: ${(_displayDistanceFt ?? d.distanceFeet).toStringAsFixed(2)} ft',
+                        'Distance: ${(_displayDistanceFt ?? d.distanceFeet).toStringAsFixed(1)} ft',
                         style: const TextStyle(
                           fontFamily: 'Inter',
-                          fontSize: 18,
-                          color: Colors.grey,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         "Seen ${_ageLabel(d.lastSeenMs)}",
-                        style: const TextStyle(fontFamily: 'Inter'),
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 16,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+
+                const SizedBox(height: 20),
                 TutorialBlinker(
                   isTutorialMode: widget.tutorialMode,
                   child: Container(
                     key: _signalStrengthKey,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 8,
+                      horizontal: 24,
+                      vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: color, width: 1.5),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: color, width: 2.5),
                     ),
                     child: Text(
                       _bandLabel(band),
                       style: TextStyle(
                         fontFamily: 'Inter',
-                        fontSize: 18,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
                         color: color,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
+
+                const SizedBox(height: 30),
                 ElevatedButton.icon(
-                  label: const Text('Found'), // Mark as Found
+                  icon: const Icon(Icons.check_circle, size: 28),
+                  label: const Text('Found', style: TextStyle(fontSize: 18)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.blueAccent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
                   ),
                   onPressed: () => _markFound(d),
                 ),
@@ -465,25 +457,28 @@ class _SearchPageState extends State<SearchPage> {
                 const Text(
                   'DEVICE FOUND',
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: Colors.red,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Text(
                   'UUID: ...${d.shortUuid}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                Text('Date/Time: ${_timeFound.toString().split('.')[0]}'),
-                const SizedBox(height: 16),
+                Text(
+                  'Date/Time: ${_timeFound?.toString().split('.')[0] ?? "N/A"}',
+                ),
+                const SizedBox(height: 24),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.report),
                   label: const Text('Create Report'),
                   onPressed: () => _submitReport(d),
                 ),
               ],
-              const SizedBox(height: 18),
+
+              const SizedBox(height: 30),
               TutorialBlinker(
                 isTutorialMode: widget.tutorialMode,
                 child: Padding(
@@ -492,11 +487,8 @@ class _SearchPageState extends State<SearchPage> {
                   child: _MarkTabs(
                     selected: mark,
                     onSelect: (m) {
-                      // Toggles classification OFF if already selected
                       final DeviceMark? newMark = (m == mark) ? null : m;
-
                       setState(() => DeviceMarks.setMark(d.signature, newMark));
-
                       if (newMark == DeviceMark.suspect &&
                           !widget.tutorialMode) {
                         ReportsStore.createFromDevice(d);
@@ -505,7 +497,7 @@ class _SearchPageState extends State<SearchPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
               Text(
                 'UUID: ...${d.shortUuid}',
                 style: const TextStyle(fontFamily: 'Inter'),
@@ -575,7 +567,6 @@ class _Pill extends StatelessWidget {
   final Color color;
   final bool selected;
   final VoidCallback onTap;
-
   const _Pill({
     required this.label,
     required this.color,
@@ -609,7 +600,7 @@ class _Pill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2.0),
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
