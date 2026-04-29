@@ -26,7 +26,6 @@ class _HiddenTagsPageState extends State<HiddenTagsPage> {
   Future<void> _restoreOne(String key) async {
     await DeviceMarks.restoreUndesignated(key);
     _reload();
-
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -34,9 +33,30 @@ class _HiddenTagsPageState extends State<HiddenTagsPage> {
   }
 
   Future<void> _restoreAll() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore all hidden tags?'),
+        content: const Text(
+          'This will make all previously hidden undesignated tags visible again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Restore All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     await DeviceMarks.clearDismissedUndesignated();
     _reload();
-
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -81,7 +101,6 @@ class _HiddenTagsPageState extends State<HiddenTagsPage> {
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final key = _hiddenKeys[index];
-
                 return Card(
                   elevation: 0,
                   color: Colors.grey.shade50,

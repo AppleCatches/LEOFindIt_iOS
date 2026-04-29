@@ -1,5 +1,3 @@
-// lib/identification_page.dart
-
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'device_marks.dart';
@@ -8,38 +6,23 @@ import 'search_page.dart';
 // displays a list of detected tracker devices categorized as friendly, nonsuspect, suspect, or undesignated
 class IdentificationPage extends StatelessWidget {
   final List<TrackerDevice> devices;
-  final GlobalKey? identifyTabsKey;
+  final GlobalKey? classifyTabsKey;
 
   const IdentificationPage({
     required this.devices,
-    this.identifyTabsKey,
+    this.classifyTabsKey,
     super.key,
   });
-
-  @override
-  State<IdentificationPage> createState() => _IdentificationPageState();
-}
-
-class _IdentificationPageState extends State<IdentificationPage> {
-  DeviceMark? _selectedFilter;
-
-  static const int _activeWindowMs = 30 * 1000;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: DeviceMarks.version,
       builder: (_, __, ___) {
-        final nowMs = DateTime.now().millisecondsSinceEpoch;
-
+        // De-dupe by signature (latest snapshot wins)
         final Map<String, TrackerDevice> unique = {};
-        for (final d in widget.devices) {
-          final key = d.stableKey;
-          final prev = unique[key];
-
-          if (prev == null || d.lastSeenMs > prev.lastSeenMs) {
-            unique[key] = d;
-          }
+        for (final d in devices) {
+          unique[d.signature] = d;
         }
 
         final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -105,64 +88,63 @@ class _IdentificationPageState extends State<IdentificationPage> {
     BuildContext context,
     List<TrackerDevice> list, {
     required String empty,
-    required int nowMs,
   }) {
-    if (list.isEmpty) {
-      return Center(
-        child: Text(
-          empty,
-          style: const TextStyle(
-            fontFamily: 'Inter',
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey,
+    return Column(
+      children: [
+        if (list.isNotEmpty)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              icon: const Icon(Icons.clear_all),
+              label: const Text('Clear All Classifications'),
+              onPressed: () {
+                for (var d in list) {
+                  DeviceMarks.clear(d.signature);
+                }
+              },
+            ),
           ),
+        Expanded(
+          child: list.isEmpty
+              ? Center(
+                  child: Text(
+                    empty,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  itemCount: list.length,
+                  itemBuilder: (_, i) => _deviceCard(context, list[i]),
+                ),
         ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 14),
-      itemCount: list.length,
-      itemBuilder: (_, i) => _deviceCard(context, list[i], nowMs: nowMs),
+      ],
     );
+  }
+
+  int _bars(int rssi) {
+    if (rssi >= -55) return 5;
+    if (rssi >= -65) return 4;
+    if (rssi >= -75) return 3;
+    if (rssi >= -85) return 2;
+    return 1;
   }
 
   String _ageLabel(int lastSeenMs) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final diffSec = ((now - lastSeenMs) / 1000).floor();
-
-    if (diffSec < 60) return "${diffSec}s ago";
-
-    final m = (diffSec ~/ 60);
-    final s = (diffSec % 60);
-
-    if (m < 60) return "${m}m ${s}s ago";
-
-    final h = (m ~/ 60);
-    final remM = (m % 60);
-    return "${h}hr ${remM}m ago";
+    final s = ((now - lastSeenMs) / 1000).clamp(0, 999999).toInt();
+    if (s < 60) return "${s}s ago";
+    final m = (s ~/ 60);
+    final rs = (s % 60);
+    return "${m}m ${rs}s ago";
   }
 
-  bool _isStale(int lastSeenMs, int nowMs) {
-    return nowMs - lastSeenMs > _activeWindowMs;
-  }
-
-  String _assetForDevice(TrackerDevice d) {
-    if (d.isLikelyAirTag) return 'assets/airtag.png';
-    if (d.isLikelyTile) return 'assets/tile.png';
-    if (d.isLikelyFindMy) return 'assets/findmy.png';
-    if (d.isLikelySamsung) return 'assets/smarttag2.png';
-    return 'assets/leo_splash.png';
-  }
-
-  Widget _deviceCard(
-    BuildContext context,
-    TrackerDevice d, {
-    required int nowMs,
-  }) {
-    final stale = _isStale(d.lastSeenMs, nowMs);
-
+  Widget _deviceCard(BuildContext context, TrackerDevice d) {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -191,15 +173,13 @@ class _IdentificationPageState extends State<IdentificationPage> {
                         fontSize: 18,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text('UUID: …${d.shortUuid}'),
-                    Text('MAC last 4: ${d.macTail4}'),
                     const SizedBox(height: 6),
                     Text(
                       'UUID: ${d.displayUuid}',
                       style: TextStyle(
                         fontFamily: 'Inter',
                         color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     Text(
@@ -209,17 +189,26 @@ class _IdentificationPageState extends State<IdentificationPage> {
                         color: Colors.grey.shade700,
                       ),
                     ),
-                    if (stale) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Stale tag • not currently active',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.w700,
-                          color: Colors.orange.shade700,
+                    Text(
+                      'Distance: ${d.distanceFeet.toStringAsFixed(1)} ft',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: List.generate(
+                        5,
+                        (i) => Icon(
+                          Icons.signal_cellular_alt,
+                          size: 18,
+                          color: i < _bars(d.smoothedRssi.round())
+                              ? Colors.green
+                              : Colors.grey.shade300,
                         ),
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
@@ -228,17 +217,6 @@ class _IdentificationPageState extends State<IdentificationPage> {
         ),
       ),
     );
-  }
-
-  Color _markColor(DeviceMark? mark) {
-    switch (mark ?? DeviceMark.undesignated) {
-      case DeviceMark.suspect:
-        return const Color(0xFFD9534F);
-      case DeviceMark.friendly:
-        return const Color(0xFF2E7D32);
-      case DeviceMark.undesignated:
-        return const Color(0xFF1500FF);
-    }
   }
 }
 
@@ -253,8 +231,8 @@ class _MarkTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = Colors.grey.shade100;
-
     return Container(
+      height: 60,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: bg,
@@ -299,39 +277,33 @@ class _MarkTabs extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _pill({
-    required String label,
-    required Color color,
-    required DeviceMark mark,
-  }) {
-    final active = selected == mark;
+class _TabPill extends StatelessWidget {
+  final String label;
+  final Color color;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: () => onTap(mark),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: active ? color : const Color(0xFFB0B0B0),
-            width: active ? 2 : 1.6,
-          ),
-        ),
+  const _TabPill({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2.0),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.circle, size: 10, color: color),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontWeight: active ? FontWeight.w800 : FontWeight.w700,
-                color: active ? Colors.black : const Color(0xFF333333),
+            Icon(Icons.signal_cellular_alt_rounded, size: 14, color: color),
+            const SizedBox(width: 4),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontFamily: 'Inter', fontSize: 13),
+                ),
               ),
             ),
           ],
@@ -340,6 +312,3 @@ class _MarkTabs extends StatelessWidget {
     );
   }
 }
-
-// Using google icons for icons here:
-// https://fonts.google.com/icons?selected=Material+Symbols+Outlined:stacks:FILL@0;wght@400;GRAD@0;opsz@24&icon.size=24&icon.color=%23e3e3e3

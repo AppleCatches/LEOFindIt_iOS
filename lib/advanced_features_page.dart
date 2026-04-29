@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-
 import 'device_marks.dart';
 import 'hidden_tags_page.dart';
-
+/*
 class AdvancedFeaturesPage extends StatelessWidget {
   const AdvancedFeaturesPage({super.key});
 
@@ -200,3 +199,4 @@ class _ActionCard extends StatelessWidget {
     );
   }
 }
+*/

@@ -1,6 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 
 // Enum representing the mark/status of a device
 enum DeviceMark { suspect, friendly, undesignated, nonsuspect }
@@ -42,13 +43,13 @@ class DeviceMetadata {
 
 // Manage the marks/statuses of devices + hidden (dismissed) undesignated tags
 class DeviceMarks {
+  static final Map<String, DeviceMetadata> _marks = {};
   static final ValueNotifier<int> version = ValueNotifier<int>(0);
 
   // Hidden / dismissed undesignated tags (for HiddenTagsPage)
   static final Set<String> _dismissedUndesignated = <String>{};
 
-  static bool _loaded = false;
-
+  // Load saved data on app start
   static Future<void> init() async {
     try {
       final file = await _file();
@@ -97,12 +98,8 @@ class DeviceMarks {
     }
   }
 
-  static bool isUndesignatedDismissed(String stableKey) {
-    return _dismissedUndesignated.contains(stableKey);
-  }
-
-  static Set<String> get dismissedUndesignatedKeys =>
-      Set<String>.from(_dismissedUndesignated);
+  static DeviceMark? getMark(String signature) => _marks[signature]?.mark;
+  static String? getName(String signature) => _marks[signature]?.customName;
 
   static void setMark(String signature, DeviceMark? mark) {
     final existingName = _marks[signature]?.customName;
@@ -119,28 +116,23 @@ class DeviceMarks {
       _marks[signature] = DeviceMetadata(mark, existingName);
     }
     version.value++;
-    await _save();
+    _save();
   }
 
-  static Future<void> clear() async {
-    _marks.clear();
+  static void setName(String signature, String name) {
+    final existingMark = _marks[signature]?.mark ?? DeviceMark.undesignated;
+    _marks[signature] = DeviceMetadata(
+      existingMark,
+      name.trim().isEmpty ? null : name.trim(),
+    );
     version.value++;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsKey);
+    _save();
   }
 
-  static Future<void> clearByMark(DeviceMark mark) async {
-    final keys = _marks.entries
-        .where((e) => e.value == mark)
-        .map((e) => e.key)
-        .toList();
-
-    for (final k in keys) {
-      _marks.remove(k);
-    }
-
+  static void clear(String signature) {
+    _marks.remove(signature);
     version.value++;
-    await _save();
+    _save();
   }
 
   // ─────────────────────────────────────────────────────────────

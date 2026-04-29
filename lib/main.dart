@@ -1,11 +1,10 @@
+// lib/main.dart
 import 'dart:async';
 import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
-
 import 'ble_bridge.dart';
 import 'models.dart';
 import 'distance_page.dart';
@@ -16,21 +15,23 @@ import 'filters.dart';
 import 'reports_store.dart';
 import 'search_page.dart';
 import 'app_tutorial.dart';
-import 'advanced_scanner_view.dart';
 
-void main() {
-  runApp(const LeoTrackerApp());
+// Initialize the app and manage the overall state
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await DeviceMarks.init();
+  await ReportsStore.init();
+  runApp(const LeoFindIt());
 }
 
-class LeoTrackerApp extends StatefulWidget {
-  const LeoTrackerApp({super.key});
-
+// The LeoFindIt widget uses a StatefulWidget to maintain and update the state as the user interacts with the app and as new devices are detected through BLE scanning
+class LeoFindIt extends StatefulWidget {
+  const LeoFindIt({super.key});
   @override
-  State<LeoTrackerApp> createState() => _LeoTrackerAppState();
+  State<LeoFindIt> createState() => _LeoFindItState();
 }
 
-class _LeoTrackerAppState extends State<LeoTrackerApp>
-    with TickerProviderStateMixin {
+class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
   final Map<String, TrackerDevice> _devicesBySig = {};
   bool scanning = false;
   int pageIndex = 0;
@@ -42,10 +43,8 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
   DateTime _mainListClearTime = DateTime.fromMillisecondsSinceEpoch(0);
   StreamSubscription<TrackerDevice>? _bleSub;
   StreamSubscription<AccelerometerEvent>? _motionSub;
-
   double _lastMag = 0;
-  final double _movementThreshold = 1.2;
-
+  final double _movementThrelaptopld = 1.2;
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
   late AnimationController _blinkCtrl;
@@ -59,29 +58,24 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
   final GlobalKey _scanButtonKey = GlobalKey();
   final GlobalKey _trackerListKey = GlobalKey();
   final GlobalKey _firstTrackerCardKey = GlobalKey();
-  final GlobalKey _identifyTabsKey = GlobalKey();
+  final GlobalKey _classifyTabsKey = GlobalKey();
+  final GlobalKey _drawerButtonKey = GlobalKey();
   final GlobalKey _drawerFiltersKey = GlobalKey();
   final GlobalKey _drawerReportsKey = GlobalKey();
   BuildContext? _materialContext;
   bool _tutorialRunning = false;
-  bool _tutorialClosedEarly = false;
-  bool _missionChosenThisLaunch = false;
 
   TrackerDevice get _demoTutorialDevice {
     final now = DateTime.now().millisecondsSinceEpoch;
     return TrackerDevice(
       signature: 'tutorial-demo-airtag',
       id: 'tutorial-demo-airtag',
-      logicalId: 'tutorial-demo-airtag',
       kind: 'AIRTAG',
-      pinnedMac: 'D4:90:F6:D4:4B:4F',
-      lastMac: 'D4:90:F6:D4:4B:4F',
       rssi: -61,
-      distanceMeters: 1.95,
+      distanceFeet: 6.4,
       firstSeenMs: now - 6000,
       lastSeenMs: now - 1200,
       sightings: 8,
-      rotatingMacCount: 1,
       rawFrame: '1EFF4C00121900112233445566778899AABBCC',
       smoothedRssi: -61,
       localName: '',
@@ -122,7 +116,6 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     });
   }
 
-    // Toggle the BLE scanning state when the user initiates a scan or stops it, managing the scan session and updating the UI accordingly
   @override
   void initState() {
     super.initState();
@@ -130,7 +123,6 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
       vsync: this,
       duration: const Duration(milliseconds: 650),
     );
-
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
     _blinkCtrl = AnimationController(
@@ -138,24 +130,12 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
       duration: const Duration(seconds: 1),
     )..repeat(reverse: true);
 
-    _fadeCtrl.forward();
-
-    _bleSub = BleBridge.detections.listen((device) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-
-      await DeviceMarks.restoreUndesignated(device.stableKey);
-
+    _bleSub = BleBridge.detections.listen((device) {
       setState(() {
         final prev = _devicesBySig[device.signature];
         _devicesBySig[device.signature] = prev == null
             ? device
             : prev.merge(device);
-
-        _heldPeakRssi[device.signature] = max(
-          _heldPeakRssi[device.signature] ?? device.smoothedRssi,
-          device.smoothedRssi,
-        );
-        _heldPeakUntilMs[device.signature] = now + 10000;
       });
     });
 
@@ -259,16 +239,13 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         .toList();
   }
 
-  // Toggle the BLE scanning state when the user initiates a scan or stops it, managing the scan session and updating the UI accordingly
   Future<void> toggleScan() async {
     if (_tutorialRunning) return;
-
     if (scanning) {
+      _scanSession++;
       await BleBridge.stopScan();
       await _motionSub?.cancel();
       _motionSub = null;
-      _blinkCtrl.stop();
-
       setState(() {
         scanning = false;
         lastScanTime = DateTime.now();
@@ -316,59 +293,36 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     _startScanTimer();
   }
 
-  // Start motion detection to monitor device movement and potentially trigger BLE scans based on significant changes in accelerometer data
   void _startMotionDetection() {
     _motionSub = accelerometerEventStream().listen((event) {
       if (!scanning) return;
-
       final magnitude = sqrt(
         event.x * event.x + event.y * event.y + event.z * event.z,
       );
-
       final delta = (magnitude - _lastMag).abs();
       _lastMag = magnitude;
-
-      if (delta > _movementThreshold) {
-        // Continuous BLE scan already active.
-      }
     });
   }
 
   Future<void> _checkFirstLaunchTutorial() async {
     final prefs = await SharedPreferences.getInstance();
-    final seen = prefs.getBool('seen_quick_start_guide') ?? false;
-
-    if (!mounted) return;
-    if (_materialContext == null) return;
-
-    setState(() {
-      _missionChosenThisLaunch = false;
-    });
-
+    final seen = prefs.getBool('replay_tutorial') ?? false;
     if (seen) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showMissionPrompt());
       return;
     }
-
+    if (_materialContext == null) return;
     await _showTutorialStartPrompt();
   }
 
   Future<void> _markTutorialSeen() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('seen_quick_start_guide', true);
-  }
-
-  void _closeEntireTutorial() {
-    _tutorialClosedEarly = true;
-    if (_navigatorKey.currentState != null) {
-      _navigatorKey.currentState!.popUntil((route) => route.isFirst);
-    }
+    await prefs.setBool('replay_tutorial', true);
   }
 
   Future<void> _showTutorialStartPrompt() async {
     final dialogContext = _materialContext;
     if (dialogContext == null) return;
-
     await showDialog(
       context: dialogContext,
       barrierDismissible: false,
@@ -411,18 +365,13 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
   Future<bool> _showCoach(List<TargetFocus> targets) async {
     final coachContext = _materialContext;
     if (coachContext == null || targets.isEmpty) return false;
-
     final completer = Completer<bool>();
-
     final coach = TutorialCoachMark(
       targets: targets,
       colorShadow: Colors.black,
       opacityShadow: 0.78,
       paddingFocus: 10,
       hideSkip: true,
-      onClickTarget: (target) {
-        // Tapping the target advances the tutorial
-      },
       onFinish: () {
         if (!completer.isCompleted) completer.complete(true);
       },
@@ -431,7 +380,6 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         return true;
       },
     );
-
     await Future.delayed(const Duration(milliseconds: 100));
     coach.show(context: coachContext);
     return completer.future;
@@ -443,7 +391,6 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
       await BleBridge.stopScan();
       await _motionSub?.cancel();
       _motionSub = null;
-      _blinkCtrl.stop();
       setState(() {
         scanning = false;
         lastScanTime = DateTime.now();
@@ -472,7 +419,6 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     _showMissionPrompt();
   }
 
-  // Force sequence: scan button -> tracker list -> open tracker card
   Future<void> _runDistanceTutorial() async {
     await _showCoach([
       tutorialTarget(
@@ -485,8 +431,8 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
       tutorialTarget(
         key: _firstTrackerCardKey,
         id: 'open_tracker',
-        title: 'Open a tag',
-        body: 'Tap a tag to open the detailed search page.',
+        title: 'Open a tracker',
+        body: 'You can click a tag to open a more detailed page.',
         showSkip: false,
       ),
     ]);
@@ -494,10 +440,8 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
 
   Future<void> _openSearchTutorialFromDemoTracker() async {
     final navContext = _materialContext;
-    if (navContext == null || _tutorialClosedEarly) return;
-
+    if (navContext == null) return;
     await Future.delayed(const Duration(milliseconds: 250));
-
     await Navigator.push(
       navContext,
       MaterialPageRoute(
@@ -507,14 +451,14 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     );
   }
 
-  Future<void> _runIdentifyTutorial() async {
+  Future<void> _runClassifyTutorial() async {
     await _showCoach([
       tutorialTarget(
-        key: _identifyTabsKey,
-        id: 'identify_tabs',
-        title: 'Classified tags',
+        key: _classifyTabsKey,
+        id: 'classify_tabs',
+        title: 'Classification page',
         body:
-            'Tags can be moved into undesignated, friendly, nonsuspect, or suspect.',
+            'Trackers will be categorized here once you pick a category on the previous page.',
         showSkip: false,
       ),
     ]);
@@ -523,73 +467,51 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
   Future<void> _runDrawerTutorial() async {
     _scaffoldKey.currentState?.openDrawer();
     await Future.delayed(const Duration(milliseconds: 600));
-
     await _showCoach([
-      tutorialTarget(
-        key: _drawerQuickStartKey,
-        id: 'drawer_quick_start',
-        title: 'Quick Start',
-        body: 'Use this to rerun the tutorial any time.',
-        showSkip: false,
-      ),
-      tutorialTarget(
-        key: _drawerGuidanceKey,
-        id: 'drawer_guidance',
-        title: 'LEO Guidance',
-        body: 'Open law-enforcement guidance here.',
-        showSkip: false,
-      ),
       tutorialTarget(
         key: _drawerFiltersKey,
         id: 'drawer_filters',
-        title: 'Filters',
-        body: 'Use filters to control search behavior.',
+        title: 'Filter options',
+        body: 'Use these filter options to control what trackers are shown.',
+        align: ContentAlign.bottom,
         showSkip: false,
       ),
       tutorialTarget(
         key: _drawerReportsKey,
         id: 'drawer_reports',
         title: 'Reports page',
-        body: 'Saved suspect or found reports show up here.',
-        showSkip: false,
-      ),
-      tutorialTarget(
-        key: _drawerAdvancedKey,
-        id: 'drawer_advanced',
-        title: 'Advanced Features',
-        body: 'Use this area for clearing saved tag designations.',
+        body: 'Suspect tracker reports will show up here.',
+        align: ContentAlign.bottom,
         showSkip: false,
       ),
     ]);
-
-    if (!mounted || _materialContext == null || _tutorialClosedEarly) return;
+    if (!mounted || _materialContext == null) return;
     Navigator.of(_materialContext!).pop();
     await Future.delayed(const Duration(milliseconds: 300));
   }
 
-  // Clean up resources such as animation controllers and stream subscriptions when the widget is disposed to prevent memory leaks
   @override
   void dispose() {
     _fadeCtrl.dispose();
     _blinkCtrl.dispose();
     _motionSub?.cancel();
     _bleSub?.cancel();
+    _scanTimer?.cancel();
     super.dispose();
   }
 
-  // Build the main UI of the app, including the navigation between different pages (DistancePage and IdentificationPage) and displaying the list of detected devices based on the current filters and sorting options
   @override
   Widget build(BuildContext context) {
     final trackedDevices = devices
         .where(
           (d) =>
               d.isLikelyAirTag ||
-              d.isLikelyFindMy ||
               d.isLikelyTile ||
-              d.isLikelySamsung,
+              d.isLikelySamsung ||
+              d.isPossibleAirTag ||
+              d.kind.contains('APPLE'),
         )
         .toList();
-
     final tutorialTrackedDevices = _tutorialRunning
         ? <TrackerDevice>[_demoTutorialDevice]
         : trackedDevices;

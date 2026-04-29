@@ -8,8 +8,9 @@ import 'quick_start_page.dart';
 import 'advanced_search_help_page.dart';
 import 'tips_page.dart';
 import 'filters_page.dart';
-import 'guidance_page.dart';
 import 'reports_page.dart';
+import 'warrent_info_page.dart';
+import 'app_tutorial.dart';
 
 class AppDrawer extends StatefulWidget {
   final GlobalKey<State<StatefulWidget>>? filtersTileKey;
@@ -18,8 +19,6 @@ class AppDrawer extends StatefulWidget {
   final bool tutorialMode;
   const AppDrawer({
     super.key,
-    this.quickStartTileKey,
-    this.guidanceTileKey,
     this.filtersTileKey,
     this.reportsTileKey,
     this.onReplayTutorial,
@@ -32,6 +31,7 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> {
   String _appVersion = '';
+  bool _isCheckingForUpdate = false;
 
   @override
   void initState() {
@@ -39,11 +39,12 @@ class _AppDrawerState extends State<AppDrawer> {
     _loadVersionInfo();
   }
 
+  // Dynamically fetches the version string from Xcode / Android Build settings
   Future<void> _loadVersionInfo() async {
     final info = await PackageInfo.fromPlatform();
     if (mounted) {
       setState(() {
-        _appVersion = info.version; //'+${info.buildNumber}';
+        _appVersion = info.version;
       });
     }
   }
@@ -96,12 +97,6 @@ class _AppDrawerState extends State<AppDrawer> {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(28),
-          bottomRight: Radius.circular(28),
-        ),
-      ),
       child: SafeArea(
         child: Column(
           children: [
@@ -183,10 +178,13 @@ class _AppDrawerState extends State<AppDrawer> {
                         );
                       },
                     ),
-                    _DrawerTile(
-                      tileKey: widget.reportsTileKey,
-                      icon: Icons.description_outlined,
-                      title: 'Reports',
+                  ),
+                  TutorialBlinker(
+                    isTutorialMode: widget.tutorialMode,
+                    child: ListTile(
+                      key: widget.reportsTileKey,
+                      leading: const Icon(Icons.description_outlined),
+                      title: const Text("Reports"),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(

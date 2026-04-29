@@ -1,35 +1,27 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
-import 'models.dart';
 import 'device_marks.dart';
+import 'models.dart';
 
 class TrackerReport {
   final String reportId;
   final DateTime createdAt;
-
   final String signature;
   final String id;
   final String kind;
   final String mac;
-
   final int rssi;
-  final double distanceMeters;
+  final double distanceFeet;
   final int firstSeenMs;
   final int lastSeenMs;
   final int rotatingMacCount;
-
   final String rawFrame;
-
-  // Where the exported file was saved (content:// uri on Android)
   final String? exportedUriJson;
   final String? exportedUriTxt;
-
-  // Optional user feedback
   final String? teamFeedback;
 
   TrackerReport({
@@ -40,7 +32,7 @@ class TrackerReport {
     required this.kind,
     required this.mac,
     required this.rssi,
-    required this.distanceMeters,
+    required this.distanceFeet,
     required this.firstSeenMs,
     required this.lastSeenMs,
     required this.rotatingMacCount,
@@ -63,7 +55,7 @@ class TrackerReport {
       kind: kind,
       mac: mac,
       rssi: rssi,
-      distanceMeters: distanceMeters,
+      distanceFeet: distanceFeet,
       firstSeenMs: firstSeenMs,
       lastSeenMs: lastSeenMs,
       rotatingMacCount: rotatingMacCount,
@@ -82,7 +74,7 @@ class TrackerReport {
     "kind": kind,
     "mac": mac,
     "rssi": rssi,
-    "distanceMeters": distanceMeters,
+    "distanceFeet": distanceFeet,
     "firstSeenMs": firstSeenMs,
     "lastSeenMs": lastSeenMs,
     "rotatingMacCount": rotatingMacCount,
@@ -102,7 +94,7 @@ class TrackerReport {
     kind: (j["kind"] as String?) ?? "",
     mac: (j["mac"] as String?) ?? "",
     rssi: (j["rssi"] as int?) ?? -100,
-    distanceMeters: (j["distanceMeters"] as num?)?.toDouble() ?? 0.0,
+    distanceFeet: (j["distanceFeet"] as num?)?.toDouble() ?? 0.0,
     firstSeenMs: (j["firstSeenMs"] as int?) ?? 0,
     lastSeenMs: (j["lastSeenMs"] as int?) ?? 0,
     rotatingMacCount: (j["rotatingMacCount"] as int?) ?? 0,
@@ -115,6 +107,7 @@ class TrackerReport {
 
 class ReportsStore {
   static const MethodChannel _storage = MethodChannel("leo_find_it/storage");
+
   static final ValueNotifier<List<TrackerReport>> notifier =
       ValueNotifier<List<TrackerReport>>([]);
 
@@ -122,9 +115,9 @@ class ReportsStore {
     try {
       final f = await _reportsFile();
       if (!await f.exists()) return;
-
       final txt = await f.readAsString();
       if (txt.trim().isEmpty) return;
+
       final decoded = jsonDecode(txt);
       if (decoded is! List) return;
 
@@ -137,9 +130,7 @@ class ReportsStore {
             ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       notifier.value = list;
-    } catch (_) {
-      // don't crash
-    }
+    } catch (_) {}
   }
 
   static Future<void> _persist() async {
@@ -153,6 +144,15 @@ class ReportsStore {
     return File("${dir.path}/leo_reports.json");
   }
 
+  static Future<Directory> _exportsDir() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final exportDir = Directory("${dir.path}/LeoFindItExports");
+    if (!await exportDir.exists()) {
+      await exportDir.create(recursive: true);
+    }
+    return exportDir;
+  }
+
   static String _newId() => DateTime.now().millisecondsSinceEpoch.toString();
 
   static Future<TrackerReport> createFromDevice(TrackerDevice d) async {
@@ -162,12 +162,12 @@ class ReportsStore {
       signature: d.signature,
       id: d.id,
       kind: d.kind,
-      mac: d.displayMac,
+      mac: d.displayUuid,
       rssi: d.rssi,
-      distanceMeters: d.distanceMeters,
+      distanceFeet: d.distanceFeet,
       firstSeenMs: d.firstSeenMs,
       lastSeenMs: d.lastSeenMs,
-      rotatingMacCount: d.rotatingMacCount,
+      rotatingMacCount: 0,
       rawFrame: d.rawFrame,
     );
 
@@ -181,21 +181,16 @@ class ReportsStore {
       if (r.reportId != reportId) return r;
       return r.copyWith(teamFeedback: feedback);
     }).toList();
+
     notifier.value = updated;
     await _persist();
   }
 
-  // DOWNLOADS EXPORT HELPERS
-
   static String _safeTimestamp(DateTime t) {
-    // Windows + Android friendly
     return t.toIso8601String().replaceAll(":", "-").replaceAll(".", "-");
   }
 
-  static String _feet(double meters) => (meters * 3.28084).toStringAsFixed(1);
-
   static String _dtLocalString(DateTime dt) {
-    // keeps it simple; user’s device locale/timezone will be used
     final y = dt.year.toString().padLeft(4, '0');
     final mo = dt.month.toString().padLeft(2, '0');
     final d = dt.day.toString().padLeft(2, '0');
@@ -207,7 +202,6 @@ class ReportsStore {
 
   static String _formatCaseTxt(TrackerReport r) {
     final created = _dtLocalString(r.createdAt.toLocal());
-
     final firstSeen = r.firstSeenMs > 0
         ? _dtLocalString(
             DateTime.fromMillisecondsSinceEpoch(r.firstSeenMs).toLocal(),
@@ -219,28 +213,21 @@ class ReportsStore {
           )
         : "N/A";
 
-<<<<<<< HEAD
-    final mark = DeviceMarks.get(r.signature);
-    final markLabel = (mark == DeviceMark.friendly)
-        ? "Friendly"
-        : "Suspect (user-marked)";
-=======
     final mark = DeviceMarks.getMark(r.signature);
     final markLabel = switch (mark) {
       DeviceMark.suspect => "Suspect",
       DeviceMark.friendly => "Friendly",
+      DeviceMark.nonsuspect => "Nonsuspect", // ← added
       DeviceMark.undesignated => "Undesignated",
       null => "Unmarked",
     };
->>>>>>> parent of bc38b4d (can finally read airtags)
 
     final notes = (r.teamFeedback ?? "").trim();
     final notesBlock = notes.isEmpty ? "None." : notes;
 
     return """
-LEO Find It Case Report
+LeoFindIt Case Report
 -----------------------
-
 Report ID: ${r.reportId}
 Created: $created
 
@@ -249,29 +236,21 @@ Device
 Type/Kind: ${r.kind}
 Signature: ${r.signature}
 Device ID: ${r.id}
-MAC: ${r.mac}
+UUID: ${r.mac}
 
 Detection Summary
 -----------------
 RSSI: ${r.rssi} dBm
-Distance estimate: ${_feet(r.distanceMeters)} ft (${r.distanceMeters.toStringAsFixed(2)} m)
+Distance estimate: ${r.distanceFeet.toStringAsFixed(1)} ft
 First seen: $firstSeen
-Last seen:  $lastSeen
-<<<<<<< HEAD
-MAC rotations observed: ${r.rotatingMacCount}
-=======
->>>>>>> parent of bc38b4d (can finally read airtags)
+Last seen: $lastSeen
 
 User Classification
 -------------------
 Marked as: $markLabel
 
-<<<<<<< HEAD
-User Notes (no PII)
-=======
 User Notes (no personal info)
->>>>>>> parent of bc38b4d (can finally read airtags)
--------------------
+-----------------------------
 $notesBlock
 
 Raw BLE Payload (hex)
@@ -280,71 +259,77 @@ ${r.rawFrame.isEmpty ? "N/A" : r.rawFrame}
 
 Disclaimer
 ----------
-<<<<<<< HEAD
-- RSSI and distance are estimates and can vary by environment (walls, bodies, and other interference).
-=======
 - RSSI and distance are estimates and can vary by environment.
->>>>>>> parent of bc38b4d (can finally read airtags)
-- This report does not contain gps location.
+- This report does not contain GPS location.
 """;
   }
 
-  /// Saves a TEXT case report into Downloads/LEOFindIt/ via MediaStore.
-  /// Returns saved content:// uri string.
   static Future<String> saveCaseReportTxtToDownloads(TrackerReport r) async {
     final safeTs = _safeTimestamp(r.createdAt);
     final filename = "leo_case_${safeTs}_${r.reportId}.txt";
     final content = _formatCaseTxt(r);
 
-    final uri =
-        await _storage.invokeMethod<String>("saveToDownloads", {
-          "fileName": filename,
-          "mimeType": "text/plain",
-          "content": content,
-        }) ??
-        "";
+    String uri = "";
+    try {
+      uri =
+          await _storage.invokeMethod<String>("saveToDownloads", {
+            "fileName": filename,
+            "mimeType": "text/plain",
+            "content": content,
+          }) ??
+          "";
+    } catch (_) {}
 
-    if (uri.isEmpty) throw Exception("Failed to save TXT to Downloads");
+    if (uri.isEmpty) {
+      final dir = await _exportsDir();
+      final file = File("${dir.path}/$filename");
+      await file.writeAsString(content);
+      uri = file.path;
+    }
 
     final updated = notifier.value.map((x) {
       if (x.reportId != r.reportId) return x;
       return x.copyWith(exportedUriTxt: uri);
     }).toList();
+
     notifier.value = updated;
     await _persist();
-
     return uri;
   }
 
-  /// Saves a RAW JSON evidence file into Downloads/LEOFindIt/ via MediaStore.
-  /// Returns saved content:// uri string.
   static Future<String> saveRawJsonToDownloads(TrackerReport r) async {
     final safeTs = _safeTimestamp(r.createdAt);
     final filename = "leo_evidence_${safeTs}_${r.reportId}.json";
-    final jsonPretty = const JsonEncoder.withIndent("  ").convert(r.toJson());
+    final jsonPretty = const JsonEncoder.withIndent(" ").convert(r.toJson());
 
-    final uri =
-        await _storage.invokeMethod<String>("saveToDownloads", {
-          "fileName": filename,
-          "mimeType": "application/json",
-          "content": jsonPretty,
-        }) ??
-        "";
+    String uri = "";
+    try {
+      uri =
+          await _storage.invokeMethod<String>("saveToDownloads", {
+            "fileName": filename,
+            "mimeType": "application/json",
+            "content": jsonPretty,
+          }) ??
+          "";
+    } catch (_) {}
 
-    if (uri.isEmpty) throw Exception("Failed to save JSON to Downloads");
+    if (uri.isEmpty) {
+      final dir = await _exportsDir();
+      final file = File("${dir.path}/$filename");
+      await file.writeAsString(jsonPretty);
+      uri = file.path;
+    }
 
     final updated = notifier.value.map((x) {
       if (x.reportId != r.reportId) return x;
       return x.copyWith(exportedUriJson: uri);
     }).toList();
+
     notifier.value = updated;
     await _persist();
-
     return uri;
   }
 
-  /// Delete a report from app list (local).
-  /// If [alsoDeleteExportedFiles] is true, attempts to delete exported JSON/TXT too.
   static Future<void> deleteReport(
     String reportId, {
     bool alsoDeleteExportedFiles = false,
@@ -372,16 +357,19 @@ Disclaimer
       ].whereType<String>().where((u) => u.isNotEmpty);
       for (final u in uris) {
         try {
-          await _storage.invokeMethod<bool>("deleteFromDownloads", {"uri": u});
-        } catch (_) {
-          // best effort
-        }
+          if (u.startsWith('/')) {
+            final f = File(u);
+            if (await f.exists()) await f.delete();
+          } else {
+            await _storage.invokeMethod<bool>("deleteFromDownloads", {
+              "uri": u,
+            });
+          }
+        } catch (_) {}
       }
     }
   }
 
-  /// Clear all reports from app list.
-  /// Optionally attempt deleting exported files too (best effort).
   static Future<void> clearAll({bool alsoDeleteExportedFiles = false}) async {
     final uris = alsoDeleteExportedFiles
         ? notifier.value
@@ -397,7 +385,14 @@ Disclaimer
     if (alsoDeleteExportedFiles) {
       for (final u in uris) {
         try {
-          await _storage.invokeMethod<bool>("deleteFromDownloads", {"uri": u});
+          if (u.startsWith('/')) {
+            final f = File(u);
+            if (await f.exists()) await f.delete();
+          } else {
+            await _storage.invokeMethod<bool>("deleteFromDownloads", {
+              "uri": u,
+            });
+          }
         } catch (_) {}
       }
     }

@@ -14,22 +14,28 @@ TargetFocus tutorialTarget({
   return TargetFocus(
     identify: id,
     keyTarget: key,
+    alignSkip: Alignment.topRight,
     contents: [
       TargetContent(
-        align: yOffset == 0 ? align : ContentAlign.custom,
+        align: align,
         customPosition: yOffset == 0
             ? null
             : CustomTargetContentPosition(top: yOffset),
         builder: (context, controller) {
-          return Material(
-            color: Colors.transparent,
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Container(
-              constraints: const BoxConstraints(maxWidth: 320),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 12,
+                    offset: Offset(0, 6),
+                  ),
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -38,32 +44,33 @@ TargetFocus tutorialTarget({
                   Text(
                     title,
                     style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
                       color: Colors.black,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Inter',
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Text(
                     body,
                     style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
                       color: Colors.black87,
+                      fontSize: 16,
+                      fontFamily: 'Inter',
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      // Skip button is intentionally disabled after the user starts the guide
                       /*
                       if (showSkip)
                         TextButton(
                           onPressed: controller.skip,
                           child: const Text('Skip'),
-                        ),*/
+                        ),
+                      */
                       const SizedBox(width: 8),
                       ElevatedButton(
                         onPressed: controller.next,

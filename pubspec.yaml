@@ -1,7 +1,7 @@
 name: leofindit
-description: "LeoFindIt - Law Enforcement Tracker Detection Tool"
+description: "A new Flutter project."
 publish_to: "none"
-version: 1.0.0+1
+version: 1.0.0+7
 
 environment:
   sdk: ^3.9.2
@@ -49,48 +49,14 @@ flutter:
 
     - family: Inter
       fonts:
-        - asset: assets/Inter/Inter-VariableFont_opsz,wght.ttf
-          weight: 400
-        - asset: assets/Inter/Inter-Italic-VariableFont_opsz,wght.ttf
-          style: italic
-        # Static fallbacks
-        - asset: assets/Inter/static/Inter_18pt-Thin.ttf
-          weight: 100
-        - asset: assets/Inter/static/Inter_18pt-ExtraLight.ttf
-          weight: 200
-        - asset: assets/Inter/static/Inter_18pt-Light.ttf
-          weight: 300
         - asset: assets/Inter/static/Inter_18pt-Regular.ttf
-          weight: 400
         - asset: assets/Inter/static/Inter_18pt-Medium.ttf
           weight: 500
         - asset: assets/Inter/static/Inter_18pt-SemiBold.ttf
           weight: 600
         - asset: assets/Inter/static/Inter_18pt-Bold.ttf
           weight: 700
-        - asset: assets/Inter/static/Inter_18pt-ExtraBold.ttf
-          weight: 800
-        - asset: assets/Inter/static/Inter_18pt-Black.ttf
-          weight: 900
-        # 24pt variants
-        - asset: assets/Inter/static/Inter_24pt-Thin.ttf
-          weight: 100
-        - asset: assets/Inter/static/Inter_24pt-ExtraLight.ttf
-          weight: 200
-        - asset: assets/Inter/static/Inter_24pt-Light.ttf
-          weight: 300
-        - asset: assets/Inter/static/Inter_24pt-Regular.ttf
-          weight: 400
-        - asset: assets/Inter/static/Inter_24pt-Medium.ttf
-          weight: 500
-        - asset: assets/Inter/static/Inter_24pt-SemiBold.ttf
-          weight: 600
-        - asset: assets/Inter/static/Inter_24pt-Bold.ttf
-          weight: 700
-        - asset: assets/Inter/static/Inter_24pt-ExtraBold.ttf
-          weight: 800
-        - asset: assets/Inter/static/Inter_24pt-Black.ttf
-          weight: 900
+
 
     # (body / buttons)
 
@@ -103,3 +69,4 @@ flutter:
           weight: 600
         - asset: assets/Montserrat/static/Montserrat-Bold.ttf
           weight: 700
+          
