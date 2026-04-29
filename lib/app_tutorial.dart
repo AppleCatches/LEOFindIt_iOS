@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 
-// Quick start tutorial made for new users Implemented in main with specific text
-
+/// Creates a nice-looking tutorial target for TutorialCoachMark
 TargetFocus tutorialTarget({
   required GlobalKey key,
   required String id,
@@ -59,14 +58,12 @@ TargetFocus tutorialTarget({
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      // Skip button is intentionally disabled after the user starts the guide
                       /*
                       if (showSkip)
                         TextButton(
                           onPressed: controller.skip,
                           child: const Text('Skip'),
-                        ),
-                      */
+                        ),*/
                       const SizedBox(width: 8),
                       ElevatedButton(
                         onPressed: controller.next,
@@ -82,4 +79,65 @@ TargetFocus tutorialTarget({
       ),
     ],
   );
+}
+
+/// Blinks / pulses a widget when tutorial mode is active (used in AppDrawer)
+class TutorialBlinker extends StatefulWidget {
+  final Widget child;
+  final bool isTutorialMode;
+
+  const TutorialBlinker({
+    super.key,
+    required this.child,
+    required this.isTutorialMode,
+  });
+
+  @override
+  State<TutorialBlinker> createState() => _TutorialBlinkerState();
+}
+
+class _TutorialBlinkerState extends State<TutorialBlinker>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+    _anim = Tween<double>(
+      begin: 0.4,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+
+    if (widget.isTutorialMode) {
+      _ctrl.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(TutorialBlinker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isTutorialMode && !_ctrl.isAnimating) {
+      _ctrl.repeat(reverse: true);
+    } else if (!widget.isTutorialMode && _ctrl.isAnimating) {
+      _ctrl.reset();
+      _ctrl.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isTutorialMode) return widget.child;
+    return FadeTransition(opacity: _anim, child: widget.child);
+  }
 }

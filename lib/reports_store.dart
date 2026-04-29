@@ -115,7 +115,6 @@ class TrackerReport {
 
 class ReportsStore {
   static const MethodChannel _storage = MethodChannel("leo_find_it/storage");
-
   static final ValueNotifier<List<TrackerReport>> notifier =
       ValueNotifier<List<TrackerReport>>([]);
 
@@ -126,7 +125,6 @@ class ReportsStore {
 
       final txt = await f.readAsString();
       if (txt.trim().isEmpty) return;
-
       final decoded = jsonDecode(txt);
       if (decoded is! List) return;
 
@@ -183,7 +181,6 @@ class ReportsStore {
       if (r.reportId != reportId) return r;
       return r.copyWith(teamFeedback: feedback);
     }).toList();
-
     notifier.value = updated;
     await _persist();
   }
@@ -222,10 +219,20 @@ class ReportsStore {
           )
         : "N/A";
 
+<<<<<<< HEAD
     final mark = DeviceMarks.get(r.signature);
     final markLabel = (mark == DeviceMark.friendly)
         ? "Friendly"
         : "Suspect (user-marked)";
+=======
+    final mark = DeviceMarks.getMark(r.signature);
+    final markLabel = switch (mark) {
+      DeviceMark.suspect => "Suspect",
+      DeviceMark.friendly => "Friendly",
+      DeviceMark.undesignated => "Undesignated",
+      null => "Unmarked",
+    };
+>>>>>>> parent of bc38b4d (can finally read airtags)
 
     final notes = (r.teamFeedback ?? "").trim();
     final notesBlock = notes.isEmpty ? "None." : notes;
@@ -250,13 +257,20 @@ RSSI: ${r.rssi} dBm
 Distance estimate: ${_feet(r.distanceMeters)} ft (${r.distanceMeters.toStringAsFixed(2)} m)
 First seen: $firstSeen
 Last seen:  $lastSeen
+<<<<<<< HEAD
 MAC rotations observed: ${r.rotatingMacCount}
+=======
+>>>>>>> parent of bc38b4d (can finally read airtags)
 
 User Classification
 -------------------
 Marked as: $markLabel
 
+<<<<<<< HEAD
 User Notes (no PII)
+=======
+User Notes (no personal info)
+>>>>>>> parent of bc38b4d (can finally read airtags)
 -------------------
 $notesBlock
 
@@ -266,7 +280,11 @@ ${r.rawFrame.isEmpty ? "N/A" : r.rawFrame}
 
 Disclaimer
 ----------
+<<<<<<< HEAD
 - RSSI and distance are estimates and can vary by environment (walls, bodies, and other interference).
+=======
+- RSSI and distance are estimates and can vary by environment.
+>>>>>>> parent of bc38b4d (can finally read airtags)
 - This report does not contain gps location.
 """;
   }
@@ -292,7 +310,6 @@ Disclaimer
       if (x.reportId != r.reportId) return x;
       return x.copyWith(exportedUriTxt: uri);
     }).toList();
-
     notifier.value = updated;
     await _persist();
 
@@ -320,7 +337,6 @@ Disclaimer
       if (x.reportId != r.reportId) return x;
       return x.copyWith(exportedUriJson: uri);
     }).toList();
-
     notifier.value = updated;
     await _persist();
 

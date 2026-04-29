@@ -1,6 +1,7 @@
 // ---------------------------
 // leofindit/ios/Runner/AppDelegate.swift
 // ---------------------------
+
 import Flutter
 import UIKit
 
@@ -41,7 +42,7 @@ import UIKit
         result(FlutterMethodNotImplemented)
       }
     }
-    
+
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

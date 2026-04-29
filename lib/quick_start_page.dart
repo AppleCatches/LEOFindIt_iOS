@@ -67,11 +67,25 @@ class QuickStartPage extends StatelessWidget {
             description:
                 'Tap the menu icon (☰) for Filters, Reports, Advanced Features, and full LEO Guidance.',
           ),
+<<<<<<< HEAD
           const _Step(
             number: '6',
             title: 'Need Help?',
             description:
                 'Tap any tracker for real-time proximity pulsing, or go to LEO Guidance for evidence handling steps and Apple preservation instructions.',
+=======
+          /*
+          _step(
+            6,
+            'Open Show All Devices / Advanced Scanner',
+            'Use the advanced view to inspect more device details such as RSSI, estimated distance, UUID, and device type.',
+          ),
+          */
+          _step(
+            6,
+            'Tap a device for more details',
+            'Open a device entry to inspect it further and decide whether it should be treated as undesignated, friendly, or suspect.',
+>>>>>>> parent of bc38b4d (can finally read airtags)
           ),
 
           const SizedBox(height: 40),

@@ -16,6 +16,7 @@ import 'filters.dart';
 import 'reports_store.dart';
 import 'search_page.dart';
 import 'app_tutorial.dart';
+import 'advanced_scanner_view.dart';
 
 void main() {
   runApp(const LeoTrackerApp());
@@ -31,16 +32,14 @@ class LeoTrackerApp extends StatefulWidget {
 class _LeoTrackerAppState extends State<LeoTrackerApp>
     with TickerProviderStateMixin {
   final Map<String, TrackerDevice> _devicesBySig = {};
-  final Map<String, double> _heldPeakRssi = {};
-  final Map<String, int> _heldPeakUntilMs = {};
-
-  static const int _freshPriorityWindowMs = 15 * 1000;
-
   bool scanning = false;
   int pageIndex = 0;
   DateTime? lastScanTime;
   DateTime? scanStartTime;
-
+  int _scanSession = 0;
+  int _scanSecondsElapsed = 0;
+  Timer? _scanTimer;
+  DateTime _mainListClearTime = DateTime.fromMillisecondsSinceEpoch(0);
   StreamSubscription<TrackerDevice>? _bleSub;
   StreamSubscription<AccelerometerEvent>? _motionSub;
 
@@ -51,6 +50,10 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
   late Animation<double> _fadeAnim;
   late AnimationController _blinkCtrl;
 
+  // 10-Second Sorting Validity State
+  List<String> _displayOrder = [];
+  DateTime _lastSortTime = DateTime.fromMillisecondsSinceEpoch(0);
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey _scanButtonKey = GlobalKey();
@@ -59,10 +62,6 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
   final GlobalKey _identifyTabsKey = GlobalKey();
   final GlobalKey _drawerFiltersKey = GlobalKey();
   final GlobalKey _drawerReportsKey = GlobalKey();
-  final GlobalKey _drawerQuickStartKey = GlobalKey();
-  final GlobalKey _drawerGuidanceKey = GlobalKey();
-  final GlobalKey _drawerAdvancedKey = GlobalKey();
-
   BuildContext? _materialContext;
   bool _tutorialRunning = false;
   bool _tutorialClosedEarly = false;
@@ -85,25 +84,55 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
       rotatingMacCount: 1,
       rawFrame: '1EFF4C00121900112233445566778899AABBCC',
       smoothedRssi: -61,
-      smoothedDistanceMeters: 1.95,
-      status: DeviceStatus.undesignated,
+      localName: '',
+      isConnectable: false,
+      serviceUuids: [],
+      rotatingMacCount: 0, // ← FIXED: required parameter added
     );
   }
 
+  String get scanTimeLabel {
+    final m = (_scanSecondsElapsed ~/ 60).toString();
+    final s = (_scanSecondsElapsed % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  void _startScanTimer() {
+    _scanSecondsElapsed = 0;
+    _scanTimer?.cancel();
+    _scanTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (!scanning) {
+        _scanTimer?.cancel();
+        return;
+      }
+      setState(() => _scanSecondsElapsed++);
+    });
+  }
+
+  void _resetScanTimer() {
+    _scanTimer?.cancel();
+    _scanSecondsElapsed = 0;
+  }
+
+  // Only clears devices from the main view, keeping advanced scanner intact
+  Future<void> _clearMainList() async {
+    setState(() {
+      _mainListClearTime = DateTime.now();
+    });
+  }
+
+    // Toggle the BLE scanning state when the user initiates a scan or stops it, managing the scan session and updating the UI accordingly
   @override
   void initState() {
     super.initState();
-
-    ReportsStore.init();
-    DeviceMarks.init();
-
     _fadeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 650),
     );
 
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
-
+    _fadeCtrl.forward();
     _blinkCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -136,60 +165,101 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     });
   }
 
-  List<TrackerDevice> get devices {
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    for (final sig in _heldPeakUntilMs.keys.toList()) {
-      if ((_heldPeakUntilMs[sig] ?? 0) < now) {
-        _heldPeakRssi.remove(sig);
-        _heldPeakUntilMs.remove(sig);
-      }
-    }
-
-    final list = _devicesBySig.values.toList();
-
-    if (FiltersModel.state.sortMode == SortMode.distanceAsc) {
-      list.sort((a, b) {
-        final aFresh = (now - a.lastSeenMs) <= _freshPriorityWindowMs;
-        final bFresh = (now - b.lastSeenMs) <= _freshPriorityWindowMs;
-
-        if (aFresh != bFresh) return aFresh ? -1 : 1;
-
-        final recentGap = (a.lastSeenMs - b.lastSeenMs).abs();
-        if (recentGap > 5000) {
-          return b.lastSeenMs.compareTo(a.lastSeenMs);
-        }
-
-        final c = a.distanceMeters.compareTo(b.distanceMeters);
-        if (c != 0) return c;
-
-        return b.lastSeenMs.compareTo(a.lastSeenMs);
-      });
-      return list;
-    }
-
-    list.sort((a, b) {
-      final aFresh = (now - a.lastSeenMs) <= _freshPriorityWindowMs;
-      final bFresh = (now - b.lastSeenMs) <= _freshPriorityWindowMs;
-
-      if (aFresh != bFresh) return aFresh ? -1 : 1;
-
-      final recentGap = (a.lastSeenMs - b.lastSeenMs).abs();
-      if (recentGap > 5000) {
-        return b.lastSeenMs.compareTo(a.lastSeenMs);
-      }
-
-      final ar = _heldPeakRssi[a.signature] ?? a.smoothedRssi;
-      final br = _heldPeakRssi[b.signature] ?? b.smoothedRssi;
-      final c = br.compareTo(ar);
-      if (c != 0) return c;
-
-      return b.lastSeenMs.compareTo(a.lastSeenMs);
-    });
-
-    return list;
+  void _showMissionPrompt() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Select Mission Profile',
+          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 12,
+                ),
+              ),
+              onPressed: () {
+                FiltersModel.apply(
+                  maxMainDistanceFt: 10.0,
+                  maxAdvancedDistanceFt: 40.0,
+                  minRssi: -100,
+                  filterByRssi: true,
+                  rssiThreshold: -70,
+                  sortMode: SortMode.recent,
+                );
+                Navigator.pop(ctx);
+              },
+              child: const Text(
+                'Package Mission\nI’m determining if there is a tag inside of a sealed package.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 12,
+                ),
+              ),
+              onPressed: () {
+                FiltersModel.apply(
+                  maxMainDistanceFt: 50.0,
+                  maxAdvancedDistanceFt: 200.0,
+                  minRssi: -100,
+                  filterByRssi: true,
+                  rssiThreshold: -90,
+                  sortMode: SortMode.recent,
+                );
+                Navigator.pop(ctx);
+              },
+              child: const Text(
+                'Hunting Mission\nI\'m hunting for a possible tag in a known area such as a vehicle or backpack.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
+  // 10-Second RSSI validity sorting
+  List<TrackerDevice> get devices {
+    final now = DateTime.now();
+    final nowMs = now.millisecondsSinceEpoch;
+
+    // Refresh sort every 2 seconds so "last seen" updates smoothly
+    if (now.difference(_lastSortTime).inSeconds >= 2 || _displayOrder.isEmpty) {
+      final list = _devicesBySig.values.toList()
+        ..sort((a, b) => b.smoothedRssi.compareTo(a.smoothedRssi));
+      _displayOrder = list.map((d) => d.signature).toList();
+      _lastSortTime = now;
+    }
+
+    // Only show devices that have been seen for at least 10 seconds
+    return _displayOrder
+        .where(_devicesBySig.containsKey)
+        .map((sig) => _devicesBySig[sig]!)
+        .where((d) => nowMs - d.firstSeenMs >= 10000) // ← 10 second hold
+        .toList();
+  }
+
+  // Toggle the BLE scanning state when the user initiates a scan or stops it, managing the scan session and updating the UI accordingly
   Future<void> toggleScan() async {
     if (_tutorialRunning) return;
 
@@ -204,18 +274,49 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         lastScanTime = DateTime.now();
         scanStartTime = null;
       });
-    } else {
-      await BleBridge.startScan();
-      _startMotionDetection();
-      _blinkCtrl.repeat(reverse: true);
-
-      setState(() {
-        scanning = true;
-        scanStartTime = DateTime.now();
-      });
+      _resetScanTimer();
+      return;
     }
+    final mySession = ++_scanSession;
+    try {
+      final ok = await BleBridge.startScan();
+      if (!ok) {
+        if (!mounted || _scanSession != mySession) return;
+        await _motionSub?.cancel();
+        _motionSub = null;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Bluetooth is not ready')));
+        setState(() {
+          scanning = false;
+          lastScanTime = DateTime.now();
+          scanStartTime = null;
+        });
+        _resetScanTimer();
+        return;
+      }
+    } catch (_) {
+      if (!mounted || _scanSession != mySession) return;
+      await _motionSub?.cancel();
+      _motionSub = null;
+      setState(() {
+        scanning = false;
+        lastScanTime = DateTime.now();
+        scanStartTime = null;
+      });
+      _resetScanTimer();
+      return;
+    }
+    if (!mounted || _scanSession != mySession) return;
+    setState(() {
+      scanning = true;
+      scanStartTime = DateTime.now();
+    });
+    _startMotionDetection();
+    _startScanTimer();
   }
 
+  // Start motion detection to monitor device movement and potentially trigger BLE scans based on significant changes in accelerometer data
   void _startMotionDetection() {
     _motionSub = accelerometerEventStream().listen((event) {
       if (!scanning) return;
@@ -245,7 +346,7 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     });
 
     if (seen) {
-      await _showMissionPrompt();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showMissionPrompt());
       return;
     }
 
@@ -271,149 +372,38 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     await showDialog(
       context: dialogContext,
       barrierDismissible: false,
-      builder: (_) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'Quick Start Guide',
-            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w800),
-          ),
-          content: const Text(
-            'Would you like a quickstart walkthrough of the app?',
-            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await _markTutorialSeen();
-                if (_navigatorKey.currentState != null) {
-                  _navigatorKey.currentState!.pop();
-                }
-                await _showMissionPrompt();
-              },
-              child: const Text('Skip'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (_navigatorKey.currentState != null) {
-                  _navigatorKey.currentState!.pop();
-                }
-                await Future.delayed(const Duration(milliseconds: 250));
-                await _markTutorialSeen();
-                await _startQuickGuide();
-                await _showMissionPrompt();
-              },
-              child: const Text('Start Guide'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showMissionPrompt() async {
-    final ctx = _materialContext;
-    if (ctx == null || !mounted) return;
-
-    await showDialog(
-      context: ctx,
-      barrierDismissible: false,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-        contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         title: const Text(
-          'Package mission / search mission',
+          'Quick Start Guide',
           style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w800),
         ),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _missionCard(
-                title: 'Sealed package search',
-                body:
-                    'I\'m determining if there is a tag inside of a sealed package. Metal safe, cardboard, plastic, or another confined item.',
-                onTap: () {
-                  FiltersModel.applyMissionPreset(MissionMode.packageSearch);
-                  if (mounted) {
-                    setState(() {
-                      _missionChosenThisLaunch = true;
-                    });
-                  }
-                  Navigator.of(ctx).pop();
-                },
-              ),
-              const SizedBox(height: 10),
-              _missionCard(
-                title: 'Known-area tag hunt',
-                body:
-                    'I\'m hunting for a possible tag in a known area such as a vehicle or backpack.',
-                onTap: () {
-                  FiltersModel.applyMissionPreset(
-                    MissionMode.wideAreaHiddenTag,
-                  );
-                  if (mounted) {
-                    setState(() {
-                      _missionChosenThisLaunch = true;
-                    });
-                  }
-                  Navigator.of(ctx).pop();
-                },
-              ),
-            ],
-          ),
+        content: const Text(
+          'Would you like a quickstart walkthrough of the app?',
+          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w500),
         ),
-      ),
-    );
-  }
-
-  Widget _missionCard({
-    required String title,
-    required String body,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.grey.shade50,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade300),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _markTutorialSeen();
+              if (_navigatorKey.currentState != null)
+                _navigatorKey.currentState!.pop();
+              _showMissionPrompt();
+            },
+            child: const Text('Skip'),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                body,
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 13,
-                  height: 1.35,
-                  color: Colors.grey.shade800,
-                ),
-              ),
-            ],
+          ElevatedButton(
+            onPressed: () {
+              if (_navigatorKey.currentState != null)
+                _navigatorKey.currentState!.pop();
+              Future.delayed(const Duration(milliseconds: 250), () {
+                _markTutorialSeen();
+                _startQuickGuide();
+              });
+            },
+            child: const Text('Start Guide'),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -430,6 +420,9 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
       opacityShadow: 0.78,
       paddingFocus: 10,
       hideSkip: true,
+      onClickTarget: (target) {
+        // Tapping the target advances the tutorial
+      },
       onFinish: () {
         if (!completer.isCompleted) completer.complete(true);
       },
@@ -446,9 +439,6 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
 
   Future<void> _startQuickGuide() async {
     if (_tutorialRunning || !mounted) return;
-    _tutorialRunning = true;
-    _tutorialClosedEarly = false;
-
     if (scanning) {
       await BleBridge.stopScan();
       await _motionSub?.cancel();
@@ -460,41 +450,29 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         scanStartTime = null;
       });
     }
-
-    setState(() => pageIndex = 0);
-    await Future.delayed(const Duration(milliseconds: 900));
-
+    setState(() {
+      pageIndex = 0;
+      _tutorialRunning = true;
+    });
+    await Future.delayed(const Duration(milliseconds: 600));
     await _runDistanceTutorial();
-    if (!mounted || _tutorialClosedEarly) {
-      _tutorialRunning = false;
-      return;
-    }
-
+    if (!mounted) return;
     await _openSearchTutorialFromDemoTracker();
-    if (!mounted || _tutorialClosedEarly) {
-      _tutorialRunning = false;
-      return;
-    }
-
+    if (!mounted) return;
     setState(() => pageIndex = 1);
     await Future.delayed(const Duration(milliseconds: 900));
-
-    await _runIdentifyTutorial();
-    if (!mounted || _tutorialClosedEarly) {
-      _tutorialRunning = false;
-      return;
-    }
-
+    await _runClassifyTutorial();
+    if (!mounted) return;
     await _runDrawerTutorial();
-    if (!mounted || _tutorialClosedEarly) {
+    if (!mounted) return;
+    setState(() {
+      pageIndex = 0;
       _tutorialRunning = false;
-      return;
-    }
-
-    setState(() => pageIndex = 0);
-    _tutorialRunning = false;
+    });
+    _showMissionPrompt();
   }
 
+  // Force sequence: scan button -> tracker list -> open tracker card
   Future<void> _runDistanceTutorial() async {
     await _showCoach([
       tutorialTarget(
@@ -502,15 +480,6 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         id: 'scan_button',
         title: 'Start and stop scanning',
         body: 'Press Scan here to stop and start device scanning.',
-        showSkip: false,
-      ),
-      tutorialTarget(
-        key: _trackerListKey,
-        id: 'distance_list',
-        title: 'Detected tags',
-        body:
-            'Undesignated tags show here with signal strength, UUID/MAC preview, and distance.',
-        yOffset: 110,
         showSkip: false,
       ),
       tutorialTarget(
@@ -598,6 +567,7 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     await Future.delayed(const Duration(milliseconds: 300));
   }
 
+  // Clean up resources such as animation controllers and stream subscriptions when the widget is disposed to prevent memory leaks
   @override
   void dispose() {
     _fadeCtrl.dispose();
@@ -607,6 +577,7 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
     super.dispose();
   }
 
+  // Build the main UI of the app, including the navigation between different pages (DistancePage and IdentificationPage) and displaying the list of detected devices based on the current filters and sorting options
   @override
   Widget build(BuildContext context) {
     final trackedDevices = devices
@@ -623,185 +594,157 @@ class _LeoTrackerAppState extends State<LeoTrackerApp>
         ? <TrackerDevice>[_demoTutorialDevice]
         : trackedDevices;
 
-    final missionLabel = !_missionChosenThisLaunch
-        ? 'Select mission'
-        : FiltersModel.state.missionMode == MissionMode.packageSearch
-        ? 'Package mission'
-        : 'Known-area hunt';
+    return ValueListenableBuilder<FiltersState>(
+      valueListenable: FiltersModel.notifier,
+      builder: (_, filters, __) {
+        final unmarkedDevices = devices
+            .where((d) => DeviceMarks.getMark(d.signature) == null)
+            .toList();
+        final advancedDevices = unmarkedDevices
+            .where((d) => d.distanceFeet <= filters.maxAdvancedDistanceFt)
+            .where((d) => d.rssi >= filters.minRssi)
+            .where(
+              (d) => !filters.filterByRssi || d.rssi >= filters.rssiThreshold,
+            )
+            .toList();
+        final nearDevices =
+            advancedDevices
+                .where((d) => d.distanceFeet <= filters.maxMainDistanceFt)
+                .where(
+                  (d) =>
+                      d.lastSeenMs >= _mainListClearTime.millisecondsSinceEpoch,
+                )
+                .toList()
+              ..sort((a, b) => a.distanceFeet.compareTo(b.distanceFeet));
 
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'LeoFindIt',
-      navigatorKey: _navigatorKey,
-      home: Builder(
-        builder: (materialContext) {
-          _materialContext = materialContext;
-
-          final pages = [
-            DistancePage(
-              devices: trackedDevices,
-              scanning: scanning,
-              onRescan: toggleScan,
-              lastScanTime: lastScanTime,
-              scanStartTime: scanStartTime,
-              scanButtonKey: _scanButtonKey,
-              trackerListKey: _trackerListKey,
-              firstTrackerCardKey: _firstTrackerCardKey,
-              tutorialMode: _tutorialRunning,
-              tutorialDevice: _demoTutorialDevice,
-            ),
-            IdentificationPage(
-              devices: tutorialTrackedDevices,
-              identifyTabsKey: _identifyTabsKey,
-            ),
-          ];
-
-          return FadeTransition(
-            opacity: _fadeAnim,
-            child: Scaffold(
-              key: _scaffoldKey,
-              drawer: AppDrawer(
-                quickStartTileKey: _drawerQuickStartKey,
-                guidanceTileKey: _drawerGuidanceKey,
-                filtersTileKey: _drawerFiltersKey,
-                reportsTileKey: _drawerReportsKey,
-                advancedTileKey: _drawerAdvancedKey,
-                onQuickStart: _startQuickGuide,
-              ),
-              appBar: AppBar(
-                leading: IconButton(
-                  icon: const Icon(Icons.menu, size: 30),
-                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+        return MaterialApp(
+          navigatorKey: _navigatorKey,
+          debugShowCheckedModeBanner: false,
+          home: Builder(
+            builder: (materialContext) {
+              _materialContext = materialContext;
+              final pages = [
+                DistancePage(
+                  nearDevices: _tutorialRunning
+                      ? tutorialTrackedDevices
+                      : nearDevices,
+                  allTrackedDevices: advancedDevices,
+                  scanning: scanning,
+                  onRescan: toggleScan,
+                  lastScanTime: lastScanTime,
+                  scanStartTime: scanStartTime,
+                  scanCountdownLabel: scanTimeLabel,
+                  onRefresh: _clearMainList,
+                  scanButtonKey: _scanButtonKey,
+                  trackerListKey: _trackerListKey,
+                  firstTrackerCardKey: _firstTrackerCardKey,
+                  tutorialMode: _tutorialRunning,
+                  tutorialDevice: _demoTutorialDevice,
                 ),
-                centerTitle: true,
-                title: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+                IdentificationPage(
+                  devices: _tutorialRunning ? tutorialTrackedDevices : devices,
+                  classifyTabsKey: _classifyTabsKey,
+                ),
+              ];
+              return FadeTransition(
+                opacity: _fadeAnim,
+                child: Scaffold(
+                  key: _scaffoldKey,
+                  drawer: AppDrawer(
+                    filtersTileKey: _drawerFiltersKey,
+                    reportsTileKey: _drawerReportsKey,
+                    tutorialMode: _tutorialRunning,
+                    onReplayTutorial: () {
+                      // Close drawer first, then start tutorial
+                      _scaffoldKey.currentState?.closeDrawer();
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        if (mounted) _startQuickGuide();
+                      });
+                    },
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.asset(
-                          'assets/leo_splash.png',
-                          height: 20,
-                          width: 20,
-                          fit: BoxFit.cover,
-                        ),
+                  appBar: AppBar(
+                    leading: IconButton(
+                      key: _drawerButtonKey,
+                      icon: const Icon(Icons.menu, size: 30),
+                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                    ),
+                    centerTitle: true,
+                    title: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
                       ),
-                      const SizedBox(width: 8),
-                      if (scanning)
-                        FadeTransition(
-                          opacity: _blinkCtrl,
-                          child: const Icon(
-                            Icons.circle,
-                            color: Colors.redAccent,
-                            size: 10,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              body: Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                    color: const Color(0xFFF6F5F8),
-                    child: Wrap(
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: const Color(0xFFD8D4DE)),
-                          ),
-                          child: Text(
-                            missionLabel,
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF5A5562),
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.asset(
+                              'assets/leo_splash.png',
+                              height: 20,
+                              width: 20,
+                              fit: BoxFit.cover,
                             ),
                           ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scanning
-                                ? const Color(0xFFE8F5E9)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: scanning
-                                  ? const Color(0xFF81C784)
-                                  : const Color(0xFFD8D4DE),
-                            ),
-                          ),
-                          child: Text(
-                            scanning ? 'Scanning active' : 'Scan stopped',
+                          const SizedBox(width: 8),
+                          const Text(
+                            'LeoFindIt',
                             style: TextStyle(
                               fontFamily: 'Inter',
-                              fontSize: 11,
+                              color: Colors.white,
                               fontWeight: FontWeight.w700,
-                              color: scanning
-                                  ? const Color(0xFF2E7D32)
-                                  : const Color(0xFF5A5562),
+                              fontSize: 14,
+                              letterSpacing: 0.7,
                             ),
                           ),
+                          const SizedBox(width: 6),
+                          if (scanning)
+                            FadeTransition(
+                              opacity: _blinkCtrl,
+                              child: const Icon(
+                                Icons.circle,
+                                color: Colors.redAccent,
+                                size: 10,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  body: SafeArea(bottom: false, child: pages[pageIndex]),
+                  bottomNavigationBar: SafeArea(
+                    top: false,
+                    child: BottomNavigationBar(
+                      type: BottomNavigationBarType.fixed,
+                      currentIndex: pageIndex,
+                      selectedItemColor: Colors.blueAccent,
+                      unselectedItemColor: Colors.grey,
+                      selectedFontSize: 16,
+                      unselectedFontSize: 12,
+                      iconSize: 28,
+                      onTap: (i) => setState(() => pageIndex = i),
+                      items: const [
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.radar),
+                          label: 'Scan',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.list_alt),
+                          label: 'Classification',
                         ),
                       ],
                     ),
                   ),
-                  Expanded(child: pages[pageIndex]),
-                ],
-              ),
-              bottomNavigationBar: SafeArea(
-                top: false,
-                child: BottomNavigationBar(
-                  type: BottomNavigationBarType.fixed,
-                  currentIndex: pageIndex,
-                  selectedItemColor: Colors.blueAccent,
-                  unselectedItemColor: Colors.grey,
-                  selectedFontSize: 16,
-                  unselectedFontSize: 12,
-                  iconSize: 28,
-                  onTap: (i) => setState(() => pageIndex = i),
-                  items: const [
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.radar),
-                      label: 'Scan',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.list_alt),
-                      label: 'Classified Tags',
-                    ),
-                  ],
                 ),
-              ),
-            ),
-          );
-        },
-      ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

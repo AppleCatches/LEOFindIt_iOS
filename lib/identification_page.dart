@@ -1,9 +1,12 @@
+// lib/identification_page.dart
+
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'device_marks.dart';
 import 'search_page.dart';
 
-class IdentificationPage extends StatefulWidget {
+// displays a list of detected tracker devices categorized as friendly, nonsuspect, suspect, or undesignated
+class IdentificationPage extends StatelessWidget {
   final List<TrackerDevice> devices;
   final GlobalKey? identifyTabsKey;
 
@@ -39,89 +42,60 @@ class _IdentificationPageState extends State<IdentificationPage> {
           }
         }
 
-        final allKnown = unique.values.toList()
-          ..sort((a, b) => b.lastSeenMs.compareTo(a.lastSeenMs));
-
-        final liveUndesignated = allKnown.where((d) {
-          if (DeviceMarks.get(d.stableKey) != DeviceMark.undesignated) {
-            return false;
-          }
-          if (d.distance <= 0) return false;
-          if (nowMs - d.lastSeenMs > _activeWindowMs) return false;
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final qualified = unique.values.where((d) {
+          if (d.distanceFeet <= 0) return false;
+          if (nowMs - d.lastSeenMs > 30 * 1000) return false;
           return true;
         }).toList();
 
-        final friendly = allKnown
-            .where((d) => DeviceMarks.get(d.stableKey) == DeviceMark.friendly)
-            .toList();
+        final suspect = <TrackerDevice>[];
+        final friendly = <TrackerDevice>[];
+        final nonsuspect = <TrackerDevice>[];
+        final undesignated = <TrackerDevice>[];
 
-        final nonsuspect = allKnown
-            .where((d) => DeviceMarks.get(d.stableKey) == DeviceMark.nonsuspect)
-            .toList();
-
-        final suspect = allKnown
-            .where((d) => DeviceMarks.get(d.stableKey) == DeviceMark.suspect)
-            .toList();
-
-        List<TrackerDevice> visible;
-        String emptyText;
-
-        if (_selectedFilter == null) {
-          visible = liveUndesignated;
-          emptyText = 'No undesignated tags yet';
-        } else if (_selectedFilter == DeviceMark.friendly) {
-          visible = friendly;
-          emptyText = 'No friendly tags yet';
-        } else if (_selectedFilter == DeviceMark.nonsuspect) {
-          visible = nonsuspect;
-          emptyText = 'No nonsuspect tags yet';
-        } else if (_selectedFilter == DeviceMark.suspect) {
-          visible = suspect;
-          emptyText = 'No suspect tags yet';
-        } else {
-          visible = liveUndesignated;
-          emptyText = 'No undesignated tags yet';
+        for (final d in qualified) {
+          final mark = DeviceMarks.getMark(d.signature);
+          if (mark == DeviceMark.suspect) {
+            suspect.add(d);
+          } else if (mark == DeviceMark.friendly) {
+            friendly.add(d);
+          } else if (mark == DeviceMark.nonsuspect) {
+            nonsuspect.add(d);
+          } else {
+            undesignated.add(d); // default = undesignated
+          }
         }
 
-        return Column(
-          children: [
-            Padding(
-              key: widget.identifyTabsKey,
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-              child: _MarkTabs(
-                selected: _selectedFilter,
-                onTap: (mark) {
-                  setState(() {
-                    if (_selectedFilter == mark) {
-                      _selectedFilter = null;
-                    } else {
-                      _selectedFilter = mark;
-                    }
-                  });
-                },
+        return DefaultTabController(
+          length: 4,
+          child: Column(
+            children: [
+              Padding(
+                key: classifyTabsKey,
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                child: const _MarkTabs(),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-              child: Center(
-                child: Text(
-                  _selectedFilter == null
-                      ? 'Showing live undesignated tags'
-                      : 'Showing ${_selectedFilter!.label.toLowerCase()} tags',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                  ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _list(context, suspect, empty: 'No suspect trackers yet'),
+                    _list(context, friendly, empty: 'No friendly trackers yet'),
+                    _list(
+                      context,
+                      nonsuspect,
+                      empty: 'No nonsuspect trackers yet',
+                    ),
+                    _list(
+                      context,
+                      undesignated,
+                      empty: 'No undesignated trackers yet',
+                    ),
+                  ],
                 ),
               ),
-            ),
-            Expanded(
-              child: _list(context, visible, empty: emptyText, nowMs: nowMs),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -200,16 +174,10 @@ class _IdentificationPageState extends State<IdentificationPage> {
           padding: const EdgeInsets.all(18),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                padding: const EdgeInsets.all(6),
-                child: Image.asset(_assetForDevice(d), fit: BoxFit.contain),
-              ),
+              buildTrackerImage(
+                d,
+                size: 44,
+              ), // assuming this is defined elsewhere
               const SizedBox(width: 18),
               Expanded(
                 child: Column(
@@ -228,7 +196,7 @@ class _IdentificationPageState extends State<IdentificationPage> {
                     Text('MAC last 4: ${d.macTail4}'),
                     const SizedBox(height: 6),
                     Text(
-                      'Distance: ${d.distanceFt.toStringAsFixed(1)} ft',
+                      'UUID: ${d.displayUuid}',
                       style: TextStyle(
                         fontFamily: 'Inter',
                         color: Colors.grey.shade700,
@@ -261,18 +229,26 @@ class _IdentificationPageState extends State<IdentificationPage> {
       ),
     );
   }
+
+  Color _markColor(DeviceMark? mark) {
+    switch (mark ?? DeviceMark.undesignated) {
+      case DeviceMark.suspect:
+        return const Color(0xFFD9534F);
+      case DeviceMark.friendly:
+        return const Color(0xFF2E7D32);
+      case DeviceMark.undesignated:
+        return const Color(0xFF1500FF);
+    }
+  }
 }
 
 class _MarkTabs extends StatelessWidget {
-  final DeviceMark? selected;
-  final ValueChanged<DeviceMark> onTap;
+  const _MarkTabs();
 
-  const _MarkTabs({required this.selected, required this.onTap});
-
-  static const _friendly = Color(0xFF2E7D32);
   static const _suspect = Color(0xFFD9534F);
-  static const _undesignated = Color(0xFF7A7A7A);
-  static const _nonsuspect = Color(0xFF1E88E5);
+  static const _friendly = Color(0xFF2E7D32);
+  static const _nonsuspect = Color(0xFF17A2B8);
+  static const _undesignated = Color(0xFF1500FF);
 
   @override
   Widget build(BuildContext context) {
@@ -285,17 +261,40 @@ class _MarkTabs extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.grey.shade300, width: 1),
       ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          _pill(label: 'Friendly', color: _friendly, mark: DeviceMark.friendly),
-          _pill(
-            label: 'Nonsuspect',
-            color: _nonsuspect,
-            mark: DeviceMark.nonsuspect,
-          ),
-          _pill(label: 'Suspect', color: _suspect, mark: DeviceMark.suspect),
+      child: TabBar(
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        indicator: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.grey.shade300, width: 1),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+              color: Colors.black.withOpacity(0.06),
+            ),
+          ],
+        ),
+        labelPadding: EdgeInsets.zero,
+        labelColor: Colors.black,
+        unselectedLabelColor: Colors.grey.shade700,
+        labelStyle: const TextStyle(
+          fontFamily: 'Inter',
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+          letterSpacing: 0.2,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontFamily: 'Inter',
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+        tabs: const [
+          _TabPill(label: 'Suspect', color: _suspect),
+          _TabPill(label: 'Friendly', color: _friendly),
+          // _TabPill(label: 'Nonsuspect', color: _nonsuspect),
+          _TabPill(label: 'Undesignated', color: _undesignated),
         ],
       ),
     );

@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum DeviceMark { undesignated, friendly, nonsuspect, suspect }
+// Enum representing the mark/status of a device
+enum DeviceMark { suspect, friendly, undesignated, nonsuspect }
 
 extension DeviceMarkX on DeviceMark {
   String get label {
@@ -19,63 +20,81 @@ extension DeviceMarkX on DeviceMark {
   }
 }
 
+class DeviceMetadata {
+  final DeviceMark mark;
+  final String? customName;
+
+  DeviceMetadata(this.mark, this.customName);
+
+  Map<String, dynamic> toJson() => {
+    'mark': mark.name,
+    'customName': customName,
+  };
+
+  static DeviceMetadata fromJson(Map<String, dynamic> json) => DeviceMetadata(
+    DeviceMark.values.firstWhere(
+      (e) => e.name == json['mark'],
+      orElse: () => DeviceMark.undesignated,
+    ),
+    json['customName'] as String?,
+  );
+}
+
+// Manage the marks/statuses of devices + hidden (dismissed) undesignated tags
 class DeviceMarks {
   static final ValueNotifier<int> version = ValueNotifier<int>(0);
 
-  static const String _prefsKey = 'device_marks_v2';
-  static const String _dismissedUndesignatedPrefsKey =
-      'dismissed_undesignated_v1';
-
-  static final Map<String, DeviceMark> _marks = {};
+  // Hidden / dismissed undesignated tags (for HiddenTagsPage)
   static final Set<String> _dismissedUndesignated = <String>{};
 
   static bool _loaded = false;
 
   static Future<void> init() async {
-    if (_loaded) return;
+    try {
+      final file = await _file();
+      if (await file.exists()) {
+        final jsonStr = await file.readAsString();
+        final Map<String, dynamic> decoded = jsonDecode(jsonStr);
 
-    final prefs = await SharedPreferences.getInstance();
-
-    final raw = prefs.getString(_prefsKey);
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        final decoded = Map<String, dynamic>.from(jsonDecode(raw));
-        _marks.clear();
-
+        // Load marked devices
         decoded.forEach((key, value) {
-          switch (value) {
-            case 'friendly':
-              _marks[key] = DeviceMark.friendly;
-              break;
-            case 'nonsuspect':
-              _marks[key] = DeviceMark.nonsuspect;
-              break;
-            case 'suspect':
-              _marks[key] = DeviceMark.suspect;
-              break;
-            case 'unknown':
-            case 'undesignated':
-            default:
-              _marks[key] = DeviceMark.undesignated;
-              break;
+          if (key != '__dismissed_undesignated__') {
+            _marks[key] = DeviceMetadata.fromJson(value);
           }
         });
-      } catch (_) {
-        _marks.clear();
+
+        // Load hidden/dismissed undesignated keys
+        if (decoded.containsKey('__dismissed_undesignated__')) {
+          _dismissedUndesignated.addAll(
+            List<String>.from(decoded['__dismissed_undesignated__']),
+          );
+        }
+
+        version.value++;
       }
+    } catch (e) {
+      debugPrint("Error loading device marks: $e");
     }
-
-    final dismissedRaw = prefs.getStringList(_dismissedUndesignatedPrefsKey);
-    _dismissedUndesignated
-      ..clear()
-      ..addAll(dismissedRaw ?? const <String>[]);
-
-    _loaded = true;
-    version.value++;
   }
 
-  static DeviceMark get(String stableKey) {
-    return _marks[stableKey] ?? DeviceMark.undesignated;
+  static Future<File> _file() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File("${dir.path}/leo_device_marks_v2.json");
+  }
+
+  static Future<void> _save() async {
+    try {
+      final file = await _file();
+      final jsonMap = _marks.map((key, value) => MapEntry(key, value.toJson()));
+
+      // Add dismissed keys to the same file
+      final fullData = Map<String, dynamic>.from(jsonMap);
+      fullData['__dismissed_undesignated__'] = _dismissedUndesignated.toList();
+
+      await file.writeAsString(jsonEncode(fullData));
+    } catch (e) {
+      debugPrint("Error saving device marks: $e");
+    }
   }
 
   static bool isUndesignatedDismissed(String stableKey) {
@@ -85,20 +104,20 @@ class DeviceMarks {
   static Set<String> get dismissedUndesignatedKeys =>
       Set<String>.from(_dismissedUndesignated);
 
-  static Future<void> set(String stableKey, DeviceMark mark) async {
-    _marks[stableKey] = mark;
-
-    // If the user classifies the device, it should not stay hidden
-    // by an old undesignated swipe-dismiss.
-    _dismissedUndesignated.remove(stableKey);
-
-    version.value++;
-    await _save();
-    await _saveDismissedUndesignated();
-  }
-
-  static Future<void> remove(String stableKey) async {
-    _marks.remove(stableKey);
+  static void setMark(String signature, DeviceMark? mark) {
+    final existingName = _marks[signature]?.customName;
+    if (mark == null) {
+      if (existingName == null) {
+        _marks.remove(signature);
+      } else {
+        _marks[signature] = DeviceMetadata(
+          DeviceMark.undesignated,
+          existingName,
+        );
+      }
+    } else {
+      _marks[signature] = DeviceMetadata(mark, existingName);
+    }
     version.value++;
     await _save();
   }
@@ -124,49 +143,28 @@ class DeviceMarks {
     await _save();
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // Hidden / Dismissed Undesignated support (used by HiddenTagsPage)
+  // ─────────────────────────────────────────────────────────────
+  static Set<String> get dismissedUndesignatedKeys =>
+      Set<String>.from(_dismissedUndesignated);
+
   static Future<void> dismissUndesignated(String stableKey) async {
     _dismissedUndesignated.add(stableKey);
     version.value++;
-    await _saveDismissedUndesignated();
+    await _save();
   }
 
   static Future<void> restoreUndesignated(String stableKey) async {
     if (_dismissedUndesignated.remove(stableKey)) {
       version.value++;
-      await _saveDismissedUndesignated();
+      await _save();
     }
   }
 
   static Future<void> clearDismissedUndesignated() async {
     _dismissedUndesignated.clear();
     version.value++;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_dismissedUndesignatedPrefsKey);
-  }
-
-  static Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = <String, String>{};
-
-    _marks.forEach((key, value) {
-      data[key] = value.name;
-    });
-
-    await prefs.setString(_prefsKey, jsonEncode(data));
-  }
-
-  static Future<void> _saveDismissedUndesignated() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _dismissedUndesignatedPrefsKey,
-      _dismissedUndesignated.toList(),
-    );
+    await _save();
   }
 }
-// Only Using this so the unknown / friendly logic
-// Can be saved across pages for the marks on
-// The search page to the Identification page
-// And so saved categories persists
-// Issue that came up that I want to remember:
-// Never let a newly created page see more data than an earlier / older page
-// If an output wasn't valid on say the scan page it won't be valid on another page

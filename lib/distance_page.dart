@@ -188,44 +188,26 @@ class _DistancePageState extends State<DistancePage> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: DeviceMarks.version,
-      builder: (_, __, ___) {
-        return ValueListenableBuilder<FiltersState>(
-          valueListenable: FiltersModel.notifier,
-          builder: (_, s, ____) {
-            final List<TrackerDevice> track;
+    final track = nearDevices;
 
-            if (widget.tutorialMode && widget.tutorialDevice != null) {
-              track = [widget.tutorialDevice!];
-            } else {
-              track = _sortedForDistancePage(
-                widget.devices
-                    .where(
-                      (d) =>
-                          d.isLikelyAirTag ||
-                          d.isLikelyTile ||
-                          d.isLikelyFindMy ||
-                          d.isLikelySamsung,
-                    )
-                    .where((d) => _showOnMainPage(d))
-                    .where(
-                      (d) => !DeviceMarks.isUndesignatedDismissed(d.stableKey),
-                    )
-                    .where((d) {
-                      if (!s.filterByRssi) return true;
-                      return d.smoothedRssi >= s.rssiThreshold;
-                    })
-                    .toList(),
-                s,
-              );
-            }
-
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-                  child: Column(
+    // If there are no nearby devices detected, the page will display a message indicating that no trackers have been detected
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Column(
+            children: [
+              // MISSION PROFILES
+              ValueListenableBuilder<FiltersState>(
+                valueListenable: FiltersModel.notifier,
+                builder: (context, filters, _) {
+                  final isActive =
+                      filters.maxMainDistanceFt == 10.0 &&
+                      filters.rssiThreshold == -70;
+                  final isPassive =
+                      filters.maxMainDistanceFt == 50.0 &&
+                      filters.rssiThreshold == -90;
+                  return Row(
                     children: [
                       ElevatedButton.icon(
                         key: widget.scanButtonKey,

@@ -19,43 +19,63 @@ class SearchPage extends StatefulWidget {
     this.tutorialMode = false,
     super.key,
   });
-
   @override
   State<SearchPage> createState() => _SearchPageState();
 }
 
 enum ProximityBand { immediate, nearby, close, far, unknown }
 
-class _SearchPageState extends State<SearchPage>
-    with SingleTickerProviderStateMixin {
+class _SearchPageState extends State<SearchPage> {
   TrackerDevice? live;
   StreamSubscription<TrackerDevice>? sub;
 
   Timer? _uiTimer;
   TrackerDevice? _pending;
+<<<<<<< HEAD
   static const int _uiFrameMs = 80;
 
   double? _displayDistanceM;
   double? _displayRssi;
+=======
+  static const int _uiFrameMs = 60;
 
-  late AnimationController _pulseCtrl;
-  late Animation<double> _pulseAnim;
+  double? _displayDistanceFt;
+>>>>>>> parent of bc38b4d (can finally read airtags)
+
+  double? _dirRssi;
+  double _rssiVelocity = 0.0;
+  int _lastDirChangeMs = 0;
+
+  static const double _rssiEmaAlpha = 0.18;
+  static const double _velocityAlpha = 0.25;
+  static const double _deadband = 0.25;
+  static const int _directionHoldMs = 400;
+
+  String direction = 'Hold steady';
+  IconData arrow = Icons.navigation;
 
   Timer? _ageTick;
   int _nowMs = DateTime.now().millisecondsSinceEpoch;
 
+<<<<<<< HEAD
   bool _manuallyFound = false;
   TrackerReport? _foundReport;
 
+=======
+>>>>>>> parent of bc38b4d (can finally read airtags)
   final GlobalKey _distanceInfoKey = GlobalKey();
   final GlobalKey _signalStrengthKey = GlobalKey();
   final GlobalKey _categoryTabsKey = GlobalKey();
+
+  bool _isManuallyFound = false;
+  DateTime? _timeFound;
 
   @override
   void initState() {
     super.initState();
     live = widget.device;
 
+<<<<<<< HEAD
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -66,6 +86,8 @@ class _SearchPageState extends State<SearchPage>
       end: 1.04,
     ).chain(CurveTween(curve: Curves.easeInOut)).animate(_pulseCtrl);
 
+=======
+>>>>>>> parent of bc38b4d (can finally read airtags)
     if (!widget.tutorialMode) {
       sub = BleBridge.detections.listen((d) {
         if (d.signature != widget.device.signature) return;
@@ -147,7 +169,11 @@ class _SearchPageState extends State<SearchPage>
         id: 'search_categories',
         title: 'Tracker categories',
         body:
+<<<<<<< HEAD
             'You can put a tracker in four categories: Undesignated, Friendly, Nonsuspect, and Suspect.',
+=======
+            'You can put a tracker in three categories: Friendly, Undesignated, and Suspect. If you use Suspect, it will create a report.',
+>>>>>>> parent of bc38b4d (can finally read airtags)
         align: ContentAlign.top,
         showSkip: false,
       ),
@@ -218,6 +244,7 @@ class _SearchPageState extends State<SearchPage>
   }
 
   void _updateState(TrackerDevice d) {
+<<<<<<< HEAD
     final rawDist = d.distanceUiM;
     final rawRssi = d.smoothedRssi;
 
@@ -254,10 +281,128 @@ class _SearchPageState extends State<SearchPage>
               fontFamily: 'Inter',
               fontWeight: FontWeight.w600,
             ),
+=======
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final rawDist = d.distanceFeet;
+
+    _displayDistanceFt ??= rawDist;
+    _displayDistanceFt = (_displayDistanceFt! * 0.90) + (rawDist * 0.10);
+
+    final rawRssi = d.rssi.toDouble();
+    _dirRssi ??= rawRssi;
+
+    final prevRssi = _dirRssi!;
+    _dirRssi = (_dirRssi! * (1 - _rssiEmaAlpha)) + (rawRssi * _rssiEmaAlpha);
+
+    final delta = _dirRssi! - prevRssi;
+    _rssiVelocity =
+        (_rssiVelocity * (1 - _velocityAlpha)) + (delta * _velocityAlpha);
+
+    if (_rssiVelocity.abs() < _deadband) {
+      direction = 'Hold steady';
+      arrow = Icons.navigation;
+      return;
+    }
+
+    if (now - _lastDirChangeMs < _directionHoldMs) return;
+
+    if (_rssiVelocity > 0) {
+      direction = 'Getting closer';
+      arrow = Icons.arrow_upward;
+      _lastDirChangeMs = now;
+    } else {
+      direction = 'Moving away';
+      arrow = Icons.arrow_downward;
+      _lastDirChangeMs = now;
+    }
+  }
+
+  void _markFound(TrackerDevice d) async {
+    await BleBridge.stopScan();
+    setState(() {
+      _isManuallyFound = true;
+      _timeFound = DateTime.now();
+    });
+  }
+
+  void _submitReport(TrackerDevice d) {
+    final ctrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Suspect Tag Report'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'I opt in to SMS with LeoFindIt developers only regarding the matter in my feedback. I can send STOP anytime to opt out.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Classified Suspect: ${DateTime.now().toString().split('.')[0]}',
+                style: const TextStyle(fontSize: 13),
+              ),
+              Text(
+                'UUID: ...${d.shortUuid}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                'First Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.firstSeenMs).toString().split('.')[0]}',
+                style: const TextStyle(fontSize: 13),
+              ),
+              Text(
+                'Last Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.lastSeenMs).toString().split('.')[0]}',
+                style: const TextStyle(fontSize: 13),
+              ),
+              Text(
+                'Marked Found: ${_timeFound?.toString().split('.')[0] ?? "N/A"}',
+                style: const TextStyle(fontSize: 13),
+              ),
+              Text(
+                'Last Distance: ${d.distanceFeet.toStringAsFixed(1)} ft',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Suggest: Screen shot this report, photograph the tag where found, and zoom in to photograph the tag serial number.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.blueAccent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Please include a sentence stating the crime and resolution and any app feedback below:',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: ctrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Crime, resolution, feedback...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+>>>>>>> parent of bc38b4d (can finally read airtags)
           ),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
         ),
+<<<<<<< HEAD
       );
   }
 
@@ -272,6 +417,48 @@ class _SearchPageState extends State<SearchPage>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Tag marked as found. Scan remains live.')),
+=======
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final body =
+                  "LeoFindIt Suspect Report:\nUUID: ...${d.shortUuid}\nFirst Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.firstSeenMs)}\nLast Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.lastSeenMs)}\nFound: ${_timeFound}\nLast Distance: ${d.distanceFeet.toStringAsFixed(1)} ft\n\nNotes: ${ctrl.text}";
+              final uri = Uri.parse(
+                "mailto:feedback@leofindit.com?subject=${Uri.encodeComponent('LeoFindIt Suspect Report')}&body=${Uri.encodeComponent(body)}",
+              );
+              try {
+                await launchUrl(uri);
+              } catch (e) {
+                // Ignore failure if emulator doesn't support Mail
+              }
+              if (mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Email'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final body =
+                  "LeoFindIt Suspect Report:\nUUID: ...${d.shortUuid}\nFirst Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.firstSeenMs)}\nLast Scanned: ${DateTime.fromMillisecondsSinceEpoch(d.lastSeenMs)}\nFound: ${_timeFound}\nLast Distance: ${d.distanceFeet.toStringAsFixed(1)} ft\n\nNotes: ${ctrl.text}";
+              final uri = Uri.parse(
+                "sms:9383686348?body=${Uri.encodeComponent(body)}",
+              );
+              try {
+                await launchUrl(uri);
+              } catch (e) {
+                // Ignore failure if emulator doesn't support SMS
+              }
+              if (mounted) Navigator.pop(ctx);
+            },
+            child: const Text('SMS'),
+          ),
+        ],
+      ),
+>>>>>>> parent of bc38b4d (can finally read airtags)
     );
   }
 
@@ -351,7 +538,6 @@ Please enter your feedback here.
     sub?.cancel();
     _uiTimer?.cancel();
     _ageTick?.cancel();
-    _pulseCtrl.dispose();
     super.dispose();
   }
 
@@ -366,12 +552,15 @@ Please enter your feedback here.
         ? const Color(0xFF2E7D32)
         : color;
 
+<<<<<<< HEAD
     final IconData centerIcon = _manuallyFound
         ? Icons.check_rounded
         : Icons.navigation_rounded;
 
     final String statusText = _manuallyFound ? 'Tag located' : _bandLabel(band);
 
+=======
+>>>>>>> parent of bc38b4d (can finally read airtags)
     return Scaffold(
       appBar: AppBar(
         leadingWidth: 140, // Increased width
@@ -404,6 +593,7 @@ Please enter your feedback here.
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+<<<<<<< HEAD
               const SizedBox(height: 18),
               ScaleTransition(
                 scale: _manuallyFound
@@ -501,11 +691,124 @@ Please enter your feedback here.
                   border: Border.all(color: Colors.grey.shade400, width: 1.6),
                   color: Colors.grey.shade50,
                 ),
+=======
+              if (!_isManuallyFound) ...[
+                Container(
+                  width: 170,
+                  height: 170,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF0996D1), Color(0xFF2084E8)],
+                    ),
+                  ),
+                  child: Icon(arrow, size: 90, color: Colors.white),
+                ),
+                const SizedBox(height: 22),
+                Text(
+                  direction,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TutorialBlinker(
+                  isTutorialMode: widget.tutorialMode,
+                  child: Column(
+                    key: _distanceInfoKey,
+                    children: [
+                      Text(
+                        "RSSI: ${d.rssi} dBm",
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Distance: ${(_displayDistanceFt ?? d.distanceFeet).toStringAsFixed(2)} ft',
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 18,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Seen ${_ageLabel(d.lastSeenMs)}",
+                        style: const TextStyle(fontFamily: 'Inter'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TutorialBlinker(
+                  isTutorialMode: widget.tutorialMode,
+                  child: Container(
+                    key: _signalStrengthKey,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: color, width: 1.5),
+                    ),
+                    child: Text(
+                      _bandLabel(band),
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton.icon(
+                  label: const Text('Found'), // Mark as Found
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.blueAccent,
+                  ),
+                  onPressed: () => _markFound(d),
+                ),
+              ] else ...[
+                const Text(
+                  'DEVICE FOUND',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'UUID: ...${d.shortUuid}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text('Date/Time: ${_timeFound.toString().split('.')[0]}'),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.report),
+                  label: const Text('Create Report'),
+                  onPressed: () => _submitReport(d),
+                ),
+              ],
+              const SizedBox(height: 18),
+              TutorialBlinker(
+                isTutorialMode: widget.tutorialMode,
+>>>>>>> parent of bc38b4d (can finally read airtags)
                 child: Padding(
                   key: _categoryTabsKey,
                   padding: const EdgeInsets.symmetric(horizontal: 0),
                   child: _MarkTabs(
                     selected: mark,
+<<<<<<< HEAD
                     onSelect: (m) => _setMark(d, m),
                   ),
                 ),
@@ -558,6 +861,27 @@ Please enter your feedback here.
                   ),
                 ),
               ],
+=======
+                    onSelect: (m) {
+                      // Toggles classification OFF if already selected
+                      final DeviceMark? newMark = (m == mark) ? null : m;
+
+                      setState(() => DeviceMarks.setMark(d.signature, newMark));
+
+                      if (newMark == DeviceMark.suspect &&
+                          !widget.tutorialMode) {
+                        ReportsStore.createFromDevice(d);
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'UUID: ...${d.shortUuid}',
+                style: const TextStyle(fontFamily: 'Inter'),
+              ),
+>>>>>>> parent of bc38b4d (can finally read airtags)
             ],
           ),
         ),

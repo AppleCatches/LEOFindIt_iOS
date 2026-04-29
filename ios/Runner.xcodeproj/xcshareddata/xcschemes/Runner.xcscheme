@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
+<<<<<<< HEAD
    LastUpgradeVersion = "2640"
+=======
+   LastUpgradeVersion = "2630"
+>>>>>>> parent of bc38b4d (can finally read airtags)
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
