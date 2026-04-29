@@ -29,18 +29,9 @@ class _IdentificationPageState extends State<IdentificationPage> {
       builder: (_, __, ___) {
         final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-        final Map<String, TrackerDevice> unique = {};
-        for (final d in widget.devices) {
-          final key = d.stableKey;
-          final prev = unique[key];
-
-          if (prev == null || d.lastSeenMs > prev.lastSeenMs) {
-            unique[key] = d;
-          }
-        }
-
-        final allKnown = unique.values.toList()
-          ..sort((a, b) => b.lastSeenMs.compareTo(a.lastSeenMs));
+        // Use the list directly. It is already unique and 2-second locked by main.dart 
+        // so this tab won't jump around sporadically.
+        final allKnown = widget.devices.toList();
 
         final liveUndesignated = allKnown.where((d) {
           if (DeviceMarks.get(d.stableKey) != DeviceMark.undesignated) {
@@ -119,12 +110,7 @@ class _IdentificationPageState extends State<IdentificationPage> {
               ),
             ),
             Expanded(
-              child: _list(
-                context,
-                visible,
-                empty: emptyText,
-                nowMs: nowMs,
-              ),
+              child: _list(context, visible, empty: emptyText, nowMs: nowMs),
             ),
           ],
         );
@@ -133,11 +119,11 @@ class _IdentificationPageState extends State<IdentificationPage> {
   }
 
   Widget _list(
-      BuildContext context,
-      List<TrackerDevice> list, {
-        required String empty,
-        required int nowMs,
-      }) {
+    BuildContext context,
+    List<TrackerDevice> list, {
+    required String empty,
+    required int nowMs,
+  }) {
     if (list.isEmpty) {
       return Center(
         child: Text(
@@ -161,30 +147,29 @@ class _IdentificationPageState extends State<IdentificationPage> {
 
   String _ageLabel(int lastSeenMs) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final s = ((now - lastSeenMs) / 1000).clamp(0, 999999).toDouble();
-    if (s < 60) return "${s.toInt()}s ago";
-    final m = (s / 60).floor();
-    final rs = (s - m * 60).floor();
-    return "${m}m ${rs}s ago";
+    final diffSec = ((now - lastSeenMs) / 1000).floor();
+
+    if (diffSec < 60) return "${diffSec}s ago";
+
+    final m = (diffSec ~/ 60);
+    final s = (diffSec % 60);
+
+    if (m < 60) return "${m}m ${s}s ago";
+
+    final h = (m ~/ 60);
+    final remM = (m % 60);
+    return "${h}hr ${remM}m ago";
   }
 
   bool _isStale(int lastSeenMs, int nowMs) {
     return nowMs - lastSeenMs > _activeWindowMs;
   }
 
-  String _assetForDevice(TrackerDevice d) {
-    if (d.isLikelyAirTag || d.isPossibleAirTag) return 'assets/airtag.png';
-    if (d.isLikelyFindMy) return 'assets/applefindmy.png';
-    if (d.isLikelyTile) return 'assets/tile.png';
-    if (d.isLikelySamsung) return 'assets/smarttag.png';
-    return 'assets/unknown.png';
-  }
-
   Widget _deviceCard(
-      BuildContext context,
-      TrackerDevice d, {
-        required int nowMs,
-      }) {
+    BuildContext context,
+    TrackerDevice d, {
+    required int nowMs,
+  }) {
     final stale = _isStale(d.lastSeenMs, nowMs);
 
     return GestureDetector(
@@ -206,10 +191,7 @@ class _IdentificationPageState extends State<IdentificationPage> {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 padding: const EdgeInsets.all(6),
-                child: Image.asset(
-                  _assetForDevice(d),
-                  fit: BoxFit.contain,
-                ),
+                child: buildTrackerImage(d, size: 40),
               ),
               const SizedBox(width: 18),
               Expanded(
@@ -226,7 +208,6 @@ class _IdentificationPageState extends State<IdentificationPage> {
                     ),
                     const SizedBox(height: 4),
                     Text('UUID: …${d.shortUuid}'),
-                    // Text('MAC last 4: ${d.macTail4}'),
                     const SizedBox(height: 6),
                     Text(
                       'Distance: ${d.distanceFt.toStringAsFixed(1)} ft',
@@ -268,10 +249,7 @@ class _MarkTabs extends StatelessWidget {
   final DeviceMark? selected;
   final ValueChanged<DeviceMark> onTap;
 
-  const _MarkTabs({
-    required this.selected,
-    required this.onTap,
-  });
+  const _MarkTabs({required this.selected, required this.onTap});
 
   static const _friendly = Color(0xFF2E7D32);
   static const _suspect = Color(0xFFD9534F);
@@ -293,21 +271,13 @@ class _MarkTabs extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
-          _pill(
-            label: 'Friendly',
-            color: _friendly,
-            mark: DeviceMark.friendly,
-          ),
+          _pill(label: 'Friendly', color: _friendly, mark: DeviceMark.friendly),
           _pill(
             label: 'Nonsuspect',
             color: _nonsuspect,
             mark: DeviceMark.nonsuspect,
           ),
-          _pill(
-            label: 'Suspect',
-            color: _suspect,
-            mark: DeviceMark.suspect,
-          ),
+          _pill(label: 'Suspect', color: _suspect, mark: DeviceMark.suspect),
         ],
       ),
     );

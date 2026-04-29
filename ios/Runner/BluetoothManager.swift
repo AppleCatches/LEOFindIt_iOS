@@ -29,6 +29,7 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
     var kind: String
     var lastRssi: Int
     var smoothedRssi: Int
+    var lastSentMs: Int64 // <--- Throttling property
   }
   private var states: [String: TrackerState] = [:]
 
@@ -100,9 +101,7 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
 
     let kind = classifyKind(advertisementData: advertisementData)
     let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-
-    states = states.filter { nowMs - $0.value.lastSeenMs <= TRACKER_TTL_MS }
-
+    
     let rawFrame = extractManufacturerHex(advertisementData: advertisementData)
     let isConnectable = (advertisementData[CBAdvertisementDataIsConnectable] as? Bool) ?? false
     let localName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? ""
@@ -114,11 +113,41 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
     let firstSeen = prev?.firstSeenMs ?? nowMs
     let sightings = (prev?.sightings ?? 0) + 1
 
-    // STRONGER SMOOTHING – fixes sporadic RSSI
     let priorSmooth = prev?.smoothedRssi ?? rssi
-    let smoothed = Int((Double(priorSmooth) * 0.75) + (Double(rssi) * 0.25))
-
+    let smoothed = Int((Double(priorSmooth) * 0.85) + (Double(rssi) * 0.15))
     let distanceFeet = estimateDistanceFeet(kind: kind, rssi: smoothed)
+
+    var lastSent = prev?.lastSentMs ?? 0
+
+    // Throttle updates to once every 300ms to increase responsiveness while preventing UI spam
+    let shouldSendUpdate = (nowMs - lastSent) > 300
+
+    if shouldSendUpdate {
+      lastSent = nowMs
+      
+      let payload: [String: Any] = [
+        "id": signature,
+        "logicalId": signature,
+        "address": NSNull(),
+        "mac": "",
+        "kind": kind,
+        "rssi": rssi,
+        "smoothedRssi": smoothed,
+        "distanceFeet": distanceFeet,
+        "firstSeenMs": Int(firstSeen),
+        "lastSeenMs": Int(nowMs),
+        "sightings": sightings,
+        "signature": signature,
+        "rawFrame": rawFrame,
+        "rotatingMacCount": 0,
+        "localName": localName,
+        "isConnectable": isConnectable,
+        "serviceUuids": serviceUuidStrings,
+        "uuid": peripheral.identifier.uuidString,
+      ]
+
+      channel.invokeMethod("onDevice", arguments: payload)
+    }
 
     states[signature] = TrackerState(
       lastSeenMs: nowMs,
@@ -128,35 +157,14 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
       rawFrame: rawFrame,
       kind: kind,
       lastRssi: rssi,
-      smoothedRssi: smoothed
+      smoothedRssi: smoothed,
+      lastSentMs: lastSent
     )
-
-    print(
-      "🟢 [iOS BLE] kind=\(kind) | name='\(localName)' | rssi=\(rssi) | smooth=\(smoothed) | connectable=\(isConnectable) | services=\(serviceUuidStrings) | mfg=\(rawFrame) | UUID=\(signature)"
-    )
-
-    let payload: [String: Any] = [
-      "id": signature,
-      "logicalId": signature,
-      "address": NSNull(),
-      "mac": "",
-      "kind": kind,
-      "rssi": rssi,
-      "smoothedRssi": smoothed,
-      "distanceFeet": distanceFeet,
-      "firstSeenMs": Int(firstSeen),
-      "lastSeenMs": Int(nowMs),
-      "sightings": sightings,
-      "signature": signature,
-      "rawFrame": rawFrame,
-      "rotatingMacCount": 0,
-      "localName": localName,
-      "isConnectable": isConnectable,
-      "serviceUuids": serviceUuidStrings,
-      "uuid": peripheral.identifier.uuidString,
-    ]
-
-    channel.invokeMethod("onDevice", arguments: payload)
+      
+    // Periodic garbage collection to clear memory
+    if sightings % 20 == 0 {
+       states = states.filter { nowMs - $0.value.lastSeenMs <= TRACKER_TTL_MS }
+    }
   }
 
   private func estimateDistanceFeet(kind: String, rssi: Int) -> Double {
@@ -181,17 +189,14 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
     let serviceStrings = uuids.map { $0.uuidString.uppercased() }
     let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data
 
-    // 1. Tile
     if localName.contains("tile") { return "TILE" }
 
-    // 2. Samsung SmartTag
     if localName.contains("smart tag") || localName.contains("smarttag")
       || localName.contains("galaxy smarttag")
     {
       return "SAMSUNG_SMARTTAG"
     }
 
-    // 3. Manufacturer data (most reliable when present)
     if let mfg = manufacturerData, let cid = companyId(from: mfg) {
       let rawUpper = mfg.map { String(format: "%02X", $0) }.joined()
 
@@ -212,25 +217,30 @@ final class BluetoothManager: NSObject, CBCentralManagerDelegate {
 
     // 4. Service UUID checks
     if serviceStrings.contains(where: { $0.contains("FD44") }) { return "AIRTAG" }
+    
     if serviceStrings.contains(where: {
       $0.contains("FEED") || $0.contains("FEEC") || $0.contains("FEE7")
     }) {
       return "TILE"
     }
+    
+    // Explicitly catch Samsung SmartThings find Service UUID
+    if serviceStrings.contains(where: { $0.contains("FD5A") }) { 
+      return "SAMSUNG_SMARTTAG" 
+    }
+    
+    // Generic Samsung
     if serviceStrings.contains(where: {
-      $0.contains("FD59") || $0.contains("FD5A") || $0.contains("FD5B") || $0.contains("FDE2")
+      $0.contains("FD59") || $0.contains("FD5B") || $0.contains("FDE2")
     }) || localName.contains("samsung") {
       return "SAMSUNG_DEVICE"
     }
 
-    // 5. Improved empty-name logic (this was the main bug)
-    // AirTags are usually connectable = true when stripped
-    // Samsung phones are usually connectable = false
     if localName.isEmpty {
       if isConnectable {
         return "AIRTAG"  // Real stripped AirTags
       } else {
-        return "APPLE_DEVICE"  // Most other Apple devices (phones, watches, etc.)
+        return "APPLE_DEVICE"  // Most other Apple devices
       }
     }
 

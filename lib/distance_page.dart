@@ -5,13 +5,10 @@ import 'search_page.dart';
 import 'device_marks.dart';
 import 'filters.dart';
 
-// In the app this is labeled the Scan page, it is the first page the app opens to...
-
 class DistancePage extends StatefulWidget {
   final List<TrackerDevice> devices;
   final bool scanning;
   final VoidCallback onRescan;
-  final VoidCallback? onRefresh;
   final DateTime? lastScanTime;
   final DateTime? scanStartTime;
 
@@ -21,15 +18,16 @@ class DistancePage extends StatefulWidget {
 
   final bool tutorialMode;
   final TrackerDevice? tutorialDevice;
+  final Future<void> Function() onRefresh;
 
   const DistancePage({
     super.key,
     required this.devices,
     required this.scanning,
     required this.onRescan,
-    this.onRefresh,
     required this.lastScanTime,
     required this.scanStartTime,
+    required this.onRefresh,
     this.scanButtonKey,
     this.trackerListKey,
     this.firstTrackerCardKey,
@@ -71,80 +69,36 @@ class _DistancePageState extends State<DistancePage> {
     return '$hour:$min $am';
   }
 
+  String _ageLabel(int lastSeenMs) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final diffSec = ((now - lastSeenMs) / 1000).floor();
+
+    if (diffSec < 60) return "${diffSec}s ago";
+
+    final m = (diffSec ~/ 60);
+    final s = (diffSec % 60);
+
+    if (m < 60) return "${m}m ${s}s ago";
+
+    final h = (m ~/ 60);
+    final remM = (m % 60);
+    return "${h}hr ${remM}m ago";
+  }
+
   String _scanElapsed() {
     final st = widget.scanStartTime;
     if (!widget.scanning || st == null) return "";
-    final sec =
-    ((_nowMs - st.millisecondsSinceEpoch) / 1000).floor().clamp(0, 999999);
+    final sec = ((_nowMs - st.millisecondsSinceEpoch) / 1000).floor().clamp(
+      0,
+      999999,
+    );
     final mm = (sec ~/ 60).toString().padLeft(2, '0');
     final ss = (sec % 60).toString().padLeft(2, '0');
     return "$mm:$ss";
   }
 
-  String _ageLabel(int lastSeenMs) {
-    final s = ((_nowMs - lastSeenMs) / 1000).clamp(0, 999999).toDouble();
-    if (s < 60) return "${s.toInt()}s ago";
-    final m = (s / 60).floor();
-    final rs = (s - m * 60).floor();
-    return "${m}m ${rs}s ago";
-  }
-
-  String _assetForDevice(TrackerDevice d) {
-    if (d.isLikelyAirTag || d.isPossibleAirTag) return 'assets/airtag.png';
-    if (d.isLikelyFindMy) return 'assets/applefindmy.png';
-    if (d.isLikelyTile) return 'assets/tile.png';
-    if (d.isLikelySamsung) return 'assets/smarttag.png';
-    return 'assets/unknown.png';
-  }
-
   bool _isFresh(TrackerDevice d) {
     return (_nowMs - d.lastSeenMs) <= _freshPriorityWindowMs;
-  }
-
-  List<TrackerDevice> _sortedForDistancePage(
-      List<TrackerDevice> input,
-      FiltersState filters,
-      ) {
-    final list = [...input];
-
-    if (filters.sortMode == SortMode.distanceAsc) {
-      list.sort((a, b) {
-        final aFresh = _isFresh(a);
-        final bFresh = _isFresh(b);
-
-        if (aFresh != bFresh) return aFresh ? -1 : 1;
-
-        final recentGap = (a.lastSeenMs - b.lastSeenMs).abs();
-        if (recentGap > 5000) {
-          return b.lastSeenMs.compareTo(a.lastSeenMs);
-        }
-
-        final c = a.distanceUiM.compareTo(b.distanceUiM);
-        if (c != 0) return c;
-
-        return b.lastSeenMs.compareTo(a.lastSeenMs);
-      });
-      return list;
-    }
-
-    list.sort((a, b) {
-      final aFresh = _isFresh(a);
-      final bFresh = _isFresh(b);
-
-      if (aFresh != bFresh) return aFresh ? -1 : 1;
-
-      final recentGap = (a.lastSeenMs - b.lastSeenMs).abs();
-      if (recentGap > 5000) {
-        return b.lastSeenMs.compareTo(a.lastSeenMs);
-      }
-
-      final c = b.smoothedRssi.compareTo(a.smoothedRssi);
-      if (c != 0) return c;
-
-      return b.lastSeenMs.compareTo(a.lastSeenMs);
-    });
-
-    return list;
   }
 
   Future<void> _dismissUndesignated(TrackerDevice d) async {
@@ -180,6 +134,13 @@ class _DistancePageState extends State<DistancePage> {
 
   @override
   Widget build(BuildContext context) {
+    final int elapsedSec = widget.scanStartTime != null
+        ? ((_nowMs - widget.scanStartTime!.millisecondsSinceEpoch) / 1000).floor()
+        : 0;
+    
+    // Check if we are currently inside the initial 10-second countdown phase
+    final bool showCountdown = widget.scanning && elapsedSec < 10 && !widget.tutorialMode;
+
     return ValueListenableBuilder<int>(
       valueListenable: DeviceMarks.version,
       builder: (_, __, ___) {
@@ -188,39 +149,18 @@ class _DistancePageState extends State<DistancePage> {
           builder: (_, s, ____) {
             final List<TrackerDevice> track;
 
-            /*
             if (widget.tutorialMode && widget.tutorialDevice != null) {
               track = [widget.tutorialDevice!];
             } else {
-              track = _sortedForDistancePage(
-                widget.devices
-                    .where((d) =>
-                d.isLikelyAirTag ||
-                    d.isLikelyTile ||
-                    d.isLikelyFindMy ||
-                    d.isLikelySamsung)
-                    .where((d) => _showOnMainPage(d))
-                    .where((d) =>
-                !DeviceMarks.isUndesignatedDismissed(d.stableKey))
-                    .where((d) {
-                  if (!s.filterByRssi) return true;
-                  return d.smoothedRssi >= s.rssiThreshold;
-                }).toList(),
-                s,
-              );
-            }
-            */
-
-            if (widget.tutorialMode && widget.tutorialDevice != null) {
-              track = [widget.tutorialDevice!];
-            } else {
+              // Filters the sorted devices list passed down from main.dart
               track = widget.devices
                   .where((d) => _showOnMainPage(d))
                   .where((d) => !DeviceMarks.isUndesignatedDismissed(d.stableKey))
                   .where((d) {
                     if (!s.filterByRssi) return true;
                     return d.smoothedRssi >= s.rssiThreshold;
-                  }).toList();
+                  })
+                  .toList();
             }
 
             return Column(
@@ -289,188 +229,211 @@ class _DistancePageState extends State<DistancePage> {
                 Expanded(
                   child: Container(
                     key: widget.trackerListKey,
-                    child: track.isEmpty
-                        ? const Center(
-                      child: Text(
-                        'No undesignated or suspect tags detected',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    )
-                        : ListView.builder(
-                      itemCount: track.length,
-                      itemBuilder: (_, i) {
-                        final d = track[i];
-                        final mark = DeviceMarks.get(d.stableKey);
-
-                        final card = Card(
-                          key: i == 0 ? widget.firstTrackerCardKey : null,
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 13,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Row(
+                    // Replaces empty states or lists with a massive countdown timer until 10 seconds completes
+                    child: showCountdown
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Container(
-                                  width: 68,
-                                  height: 68,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius:
-                                    BorderRadius.circular(16),
-                                  ),
-                                  padding: const EdgeInsets.all(4),
-                                  child: Image.asset(
-                                    _assetForDevice(d),
-                                    fit: BoxFit.contain,
+                                const CircularProgressIndicator(strokeWidth: 4, color: Colors.blueAccent),
+                                const SizedBox(height: 32),
+                                const Text(
+                                  'Analyzing Area',
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black87,
                                   ),
                                 ),
-                                const SizedBox(width: 20),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        d.displayName,
-                                        style: const TextStyle(
-                                          fontFamily: 'Inter',
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 22,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'UUID: …${d.shortUuid}',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade700,
-                                        ),
-                                      ),
-                                      /*
-                                      Text(
-                                        'MAC last 4: ${d.macTail4}',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade700,
-                                        ),
-                                      ),
-                                      */
-                                      if (mark == DeviceMark.suspect) ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Marked suspect',
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${10 - elapsedSec}',
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 72,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.blueAccent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : RefreshIndicator(
+                            onRefresh: widget.onRefresh,
+                            child: track.isEmpty
+                                ? ListView(
+                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    children: const [
+                                      SizedBox(height: 100),
+                                      Center(
+                                        child: Text(
+                                          'No trackers detected',
                                           style: TextStyle(
-                                            color: Colors.red.shade700,
-                                            fontWeight: FontWeight.w700,
+                                            fontFamily: 'Inter',
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.grey,
                                           ),
-                                        ),
-                                      ],
-                                      if (d.mayBeRotatingDuplicate)
-                                        Text(
-                                          'Possible duplicate from rotating IDs',
-                                          style: TextStyle(
-                                            color: Colors.orange.shade700,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Distance: ${d.distanceFt.toStringAsFixed(1)} ft',
-                                      ),
-                                      Text(
-                                        'RSSI: ${d.rssi} dBm • Seen ${_ageLabel(d.lastSeenMs)}',
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _isFresh(d)
-                                            ? 'Active now'
-                                            : 'Older reading',
-                                        style: TextStyle(
-                                          fontFamily: 'Inter',
-                                          fontWeight: FontWeight.w700,
-                                          color: _isFresh(d)
-                                              ? const Color(0xFF2E7D32)
-                                              : Colors.grey.shade600,
                                         ),
                                       ),
                                     ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
+                                  )
+                                : ListView.builder(
+                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    itemCount: track.length,
+                                    itemBuilder: (_, i) {
+                                      final d = track[i];
+                                      final mark = DeviceMarks.get(d.stableKey);
 
-                        if (widget.tutorialMode) {
-                          return GestureDetector(
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => SearchPage(
-                                  device: d,
-                                  tutorialMode: widget.tutorialMode,
-                                ),
-                              ),
-                            ),
-                            child: card,
-                          );
-                        }
+                                      final card = Card(
+                                        key: i == 0 ? widget.firstTrackerCardKey : null,
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 13,
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(20),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 68,
+                                                height: 68,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade100,
+                                                  borderRadius: BorderRadius.circular(16),
+                                                ),
+                                                padding: const EdgeInsets.all(4),
+                                                child: buildTrackerImage(d, size: 60),
+                                              ),
+                                              const SizedBox(width: 20),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      d.displayName,
+                                                      style: const TextStyle(
+                                                        fontFamily: 'Inter',
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 22,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      'UUID: …${d.shortUuid}',
+                                                      style: TextStyle(
+                                                        color: Colors.grey.shade700,
+                                                      ),
+                                                    ),
+                                                    if (mark == DeviceMark.suspect) ...[
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        'Marked suspect',
+                                                        style: TextStyle(
+                                                          color: Colors.red.shade700,
+                                                          fontWeight: FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                    if (d.mayBeRotatingDuplicate)
+                                                      Text(
+                                                        'Possible duplicate from rotating IDs',
+                                                        style: TextStyle(
+                                                          color: Colors.orange.shade700,
+                                                          fontWeight: FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      'Distance: ${d.distanceFt.toStringAsFixed(1)} ft',
+                                                    ),
+                                                    Text(
+                                                      'RSSI: ${d.rssi} dBm • Seen ${_ageLabel(d.lastSeenMs)}',
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      _isFresh(d) ? 'Active now' : 'Older reading',
+                                                      style: TextStyle(
+                                                        fontFamily: 'Inter',
+                                                        fontWeight: FontWeight.w700,
+                                                        color: _isFresh(d)
+                                                            ? const Color(0xFF2E7D32)
+                                                            : Colors.grey.shade600,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
 
-                        return Dismissible(
-                          key: ValueKey('undesignated_${d.stableKey}'),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 13,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                            ),
-                            child: const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.hide_source_rounded,
-                                  color: Colors.white,
-                                ),
-                                SizedBox(height: 6),
-                                Text(
-                                  'Hide',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
+                                      if (widget.tutorialMode) {
+                                        return GestureDetector(
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => SearchPage(
+                                                device: d,
+                                                tutorialMode: widget.tutorialMode,
+                                              ),
+                                            ),
+                                          ),
+                                          child: card,
+                                        );
+                                      }
+
+                                      return Dismissible(
+                                        key: ValueKey('undesignated_${d.stableKey}'),
+                                        direction: DismissDirection.endToStart,
+                                        background: Container(
+                                          margin: const EdgeInsets.symmetric(
+                                            horizontal: 18,
+                                            vertical: 13,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.shade300,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          alignment: Alignment.centerRight,
+                                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                                          child: const Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.hide_source_rounded,
+                                                color: Colors.white,
+                                              ),
+                                              SizedBox(height: 6),
+                                              Text(
+                                                'Hide',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        onDismissed: (_) => _dismissUndesignated(d),
+                                        child: GestureDetector(
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => SearchPage(
+                                                device: d,
+                                                tutorialMode: widget.tutorialMode,
+                                              ),
+                                            ),
+                                          ),
+                                          child: card,
+                                        ),
+                                      );
+                                    },
                                   ),
-                                ),
-                              ],
-                            ),
                           ),
-                          onDismissed: (_) => _dismissUndesignated(d),
-                          child: GestureDetector(
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => SearchPage(
-                                  device: d,
-                                  tutorialMode: widget.tutorialMode,
-                                ),
-                              ),
-                            ),
-                            child: card,
-                          ),
-                        );
-                      },
-                    ),
                   ),
                 ),
               ],
