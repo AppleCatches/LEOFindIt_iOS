@@ -11,6 +11,7 @@ class DistancePage extends StatefulWidget {
   final List<TrackerDevice> devices;
   final bool scanning;
   final VoidCallback onRescan;
+  final VoidCallback? onRefresh;
   final DateTime? lastScanTime;
   final DateTime? scanStartTime;
 
@@ -26,6 +27,7 @@ class DistancePage extends StatefulWidget {
     required this.devices,
     required this.scanning,
     required this.onRescan,
+    this.onRefresh,
     required this.lastScanTime,
     required this.scanStartTime,
     this.scanButtonKey,
@@ -48,7 +50,7 @@ class _DistancePageState extends State<DistancePage> {
   @override
   void initState() {
     super.initState();
-    _tick = Timer.periodic(const Duration(milliseconds: 2000), (_) {
+    _tick = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       if (!mounted) return;
       setState(() => _nowMs = DateTime.now().millisecondsSinceEpoch);
     });
@@ -69,14 +71,6 @@ class _DistancePageState extends State<DistancePage> {
     return '$hour:$min $am';
   }
 
-  String _ageLabel(int lastSeenMs) {
-    final s = ((_nowMs - lastSeenMs) / 1000).clamp(0, 999999).toDouble();
-    if (s < 60) return "${s.toStringAsFixed(1)}s ago";
-    final m = (s / 60).floor();
-    final rs = (s - m * 60).floor();
-    return "${m}m ${rs}s ago";
-  }
-
   String _scanElapsed() {
     final st = widget.scanStartTime;
     if (!widget.scanning || st == null) return "";
@@ -87,12 +81,20 @@ class _DistancePageState extends State<DistancePage> {
     return "$mm:$ss";
   }
 
+  String _ageLabel(int lastSeenMs) {
+    final s = ((_nowMs - lastSeenMs) / 1000).clamp(0, 999999).toDouble();
+    if (s < 60) return "${s.toInt()}s ago";
+    final m = (s / 60).floor();
+    final rs = (s - m * 60).floor();
+    return "${m}m ${rs}s ago";
+  }
+
   String _assetForDevice(TrackerDevice d) {
-    if (d.isLikelyAirTag) return 'assets/airtag.png';
+    if (d.isLikelyAirTag || d.isPossibleAirTag) return 'assets/airtag.png';
+    if (d.isLikelyFindMy) return 'assets/applefindmy.png';
     if (d.isLikelyTile) return 'assets/tile.png';
-    if (d.isLikelyFindMy) return 'assets/findmy.png';
-    if (d.isLikelySamsung) return 'assets/smarttag2.png';
-    return 'assets/leo_splash.png';
+    if (d.isLikelySamsung) return 'assets/smarttag.png';
+    return 'assets/unknown.png';
   }
 
   bool _isFresh(TrackerDevice d) {
@@ -186,6 +188,7 @@ class _DistancePageState extends State<DistancePage> {
           builder: (_, s, ____) {
             final List<TrackerDevice> track;
 
+            /*
             if (widget.tutorialMode && widget.tutorialDevice != null) {
               track = [widget.tutorialDevice!];
             } else {
@@ -205,6 +208,19 @@ class _DistancePageState extends State<DistancePage> {
                 }).toList(),
                 s,
               );
+            }
+            */
+
+            if (widget.tutorialMode && widget.tutorialDevice != null) {
+              track = [widget.tutorialDevice!];
+            } else {
+              track = widget.devices
+                  .where((d) => _showOnMainPage(d))
+                  .where((d) => !DeviceMarks.isUndesignatedDismissed(d.stableKey))
+                  .where((d) {
+                    if (!s.filterByRssi) return true;
+                    return d.smoothedRssi >= s.rssiThreshold;
+                  }).toList();
             }
 
             return Column(

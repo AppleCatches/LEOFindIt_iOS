@@ -164,10 +164,18 @@ class _SearchPageState extends State<SearchPage>
 
   String _ageLabel(int lastSeenMs) {
     final s = ((_nowMs - lastSeenMs) / 1000).clamp(0, 999999).toDouble();
-    if (s < 60) return "${s.toStringAsFixed(1)}s ago";
+    if (s < 60) return "${s.toInt()}s ago";
     final m = (s / 60).floor();
     final rs = (s - m * 60).floor();
     return "${m}m ${rs}s ago";
+  }
+
+  String _assetForDevice(TrackerDevice d) {
+    if (d.isLikelyAirTag || d.isPossibleAirTag) return 'assets/airtag.png';
+    if (d.isLikelyFindMy) return 'assets/applefindmy.png';
+    if (d.isLikelyTile) return 'assets/tile.png';
+    if (d.isLikelySamsung) return 'assets/smarttag.png';
+    return 'assets/unknown.png';
   }
 
   ProximityBand _bandFromRssi(double rssi) {
@@ -365,7 +373,7 @@ Please enter your feedback here.
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: 132,
+        leadingWidth: 160, // Main Scan
         leading: Padding(
           padding: const EdgeInsets.only(left: 8),
           child: TextButton.icon(
@@ -426,9 +434,11 @@ Please enter your feedback here.
               const SizedBox(height: 8),
               Column(
                 key: _distanceInfoKey,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                     _feetLabel(_displayDistanceM ?? d.distanceUiM),
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 26,
@@ -439,11 +449,13 @@ Please enter your feedback here.
                   const SizedBox(height: 8),
                   Text(
                     "RSSI: ${(_displayRssi ?? d.smoothedRssi).toStringAsFixed(1)} dBm • Seen ${_ageLabel(d.lastSeenMs)}",
+                    textAlign: TextAlign.center,
                     style: const TextStyle(fontFamily: 'Inter'),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     "UUID: …${d.shortUuid}",
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 14,

@@ -1,4 +1,3 @@
-// lib/models.dart
 import 'package:flutter/material.dart';
 import 'device_marks.dart';
 
@@ -58,12 +57,8 @@ class TrackerDevice {
   String get stableKey => signature;
   double get distanceUiM => distanceFeet / 3.28084;
   double get distanceFt => distanceFeet;
-  String get macTail4 {
-    final cleanMac = shortUuid.replaceAll(':', '').replaceAll('-', '');
-    if (cleanMac.isEmpty) return '----';
-    return cleanMac.length <= 4 ? cleanMac.toUpperCase() : cleanMac.substring(cleanMac.length - 4).toUpperCase();
-  }
-  bool get isLikelyFindMy => kind == 'FIND_MY' || kind == 'APPLE_DEVICE';
+
+  bool get isLikelyFindMy => kind == 'FIND_MY' || kind == 'APPLE_DEVICE' || kind.contains('APPLE');
   bool get mayBeRotatingDuplicate => rotatingMacCount > 1 && (isLikelyAirTag || isLikelyFindMy);
 
   double get distance => distanceFeet;
@@ -78,7 +73,6 @@ class TrackerDevice {
       kind == 'SAMSUNG_DEVICE' ||
       kind == 'SAMSUNG_SMARTTAG';
 
-  // Legacy getters used in older pages
   String get displayUuid {
     if (signature.length <= 8) return signature;
     return signature.substring(signature.length - 8);
@@ -91,11 +85,10 @@ class TrackerDevice {
 
   String get displayMac => shortUuid;
 
-  // FINAL TIGHTENED LOGIC – only real close AirTags will trigger
   bool get isPossibleAirTag {
     if (isLikelyAirTag) return true;
     final n = localName.toLowerCase().trim();
-    if (n.isNotEmpty) return false; // AirTags always empty name
+    if (n.isNotEmpty) return false;
     final isVeryClose = smoothedRssi >= -52;
     final hasEnoughSightings = sightings >= 5;
     return kind == 'APPLE_DEVICE' &&
@@ -108,15 +101,13 @@ class TrackerDevice {
     if (isLikelyAirTag || isPossibleAirTag) {
       return 'Apple AirTag';
     }
-
-    if (kind == 'APPLE_DEVICE') {
-      return 'Undesignated Device';
+    if (isLikelyFindMy) {
+      return 'AppleFindMy';
     }
-
     if (isLikelyTile) return 'Life360 Tile';
     if (isLikelySamsung) return 'Samsung SmartTag';
 
-    return 'Undesignated Tracker'; // everything else
+    return 'Undesignated Device'; 
   }
 
   factory TrackerDevice.fromNative(Map<String, dynamic> m) {
@@ -130,8 +121,7 @@ class TrackerDevice {
       lastSeenMs: (m['lastSeenMs'] as int?) ?? 0,
       sightings: (m['sightings'] as int?) ?? 1,
       rawFrame: (m['rawFrame'] as String?) ?? '',
-      smoothedRssi: ((m['smoothedRssi'] as num?) ?? (m['rssi'] as num?) ?? -100)
-          .toDouble(),
+      smoothedRssi: ((m['smoothedRssi'] as num?) ?? (m['rssi'] as num?) ?? -100).toDouble(),
       localName: (m['localName'] as String?) ?? '',
       isConnectable: (m['isConnectable'] as bool?) ?? false,
       serviceUuids: ((m['serviceUuids'] as List?) ?? []).cast<String>(),
@@ -140,11 +130,12 @@ class TrackerDevice {
   }
 }
 
-// Tracker icons
 Widget buildTrackerImage(TrackerDevice d, {double size = 44}) {
   String assetName = 'assets/unknown.png';
   if (d.isLikelyAirTag || d.isPossibleAirTag) {
     assetName = 'assets/airtag.png';
+  } else if (d.isLikelyFindMy) {
+    assetName = 'assets/applefindmy.png';
   } else if (d.isLikelyTile) {
     assetName = 'assets/tile.png';
   } else if (d.isLikelySamsung) {

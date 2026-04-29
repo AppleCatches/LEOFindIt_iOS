@@ -89,7 +89,11 @@ class _AppDrawerState extends State<AppDrawer> {
                       title: 'Quick Start',
                       onTap: () {
                         Navigator.pop(context);
-                        widget.onQuickStart?.call();
+                        if (widget.onReplayTutorial != null) {
+                          widget.onReplayTutorial!();
+                        } else {
+                          widget.onQuickStart?.call();
+                        }
                       },
                     ),
                     _DrawerTile(
@@ -171,7 +175,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 padding: const EdgeInsets.fromLTRB(22, 10, 22, 18),
                 child: Text(
                   'Version $_appVersion',
-                  textAlign: TextAlign.left,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 13,

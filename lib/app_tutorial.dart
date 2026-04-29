@@ -10,8 +10,8 @@ TargetFocus tutorialTarget({
   required String body,
   ContentAlign align = ContentAlign.bottom,
   double yOffset = 0,
-  bool showSkip = false,
-  bool showClose = true,
+  bool showSkip = true,
+  bool showClose = false,
   bool isLastStep = false,
   VoidCallback? onCloseAll,
 }) {
@@ -23,9 +23,7 @@ TargetFocus tutorialTarget({
         align: yOffset == 0 ? align : ContentAlign.custom,
         customPosition: yOffset == 0
             ? null
-            : CustomTargetContentPosition(
-          top: yOffset,
-        ),
+            : CustomTargetContentPosition(top: yOffset),
         builder: (context, controller) {
           return Material(
             color: Colors.transparent,
@@ -64,23 +62,18 @@ TargetFocus tutorialTarget({
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      /*
                       if (showSkip)
                         TextButton(
-                          onPressed: onCloseAll ?? controller.skip,
+                          onPressed: controller.skip,
                           child: const Text('Skip'),
                         ),
-                      if (showClose)
-                        TextButton(
-                          onPressed: onCloseAll ?? controller.skip,
-                          child: const Text('Close'),
-                        ),
-                      if (!isLastStep) ...[
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: controller.next,
-                          child: const Text('Next'),
-                        ),
-                      ],
+                        */
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: isLastStep ? controller.skip : controller.next,
+                        child: Text(isLastStep ? 'Done' : 'Next'),
+                      ),
                     ],
                   ),
                 ],

@@ -33,6 +33,9 @@ class LeoFindIt extends StatefulWidget {
 
 class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
   final Map<String, TrackerDevice> _devicesBySig = {};
+  final Map<String, double> _heldPeakRssi = {};
+  final Map<String, int> _heldPeakUntilMs = {};
+
   bool scanning = false;
   int pageIndex = 0;
   DateTime? lastScanTime;
@@ -44,12 +47,12 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
   StreamSubscription<TrackerDevice>? _bleSub;
   StreamSubscription<AccelerometerEvent>? _motionSub;
   double _lastMag = 0;
-  final double _movementThrelaptopld = 1.2;
+  final double _movementThreshold = 1.2;
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
   late AnimationController _blinkCtrl;
 
-  // 10-Second Sorting Validity State
+  // 10-Second Sorting Validity State (From Android logic)
   List<String> _displayOrder = [];
   DateTime _lastSortTime = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -62,8 +65,14 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
   final GlobalKey _drawerButtonKey = GlobalKey();
   final GlobalKey _drawerFiltersKey = GlobalKey();
   final GlobalKey _drawerReportsKey = GlobalKey();
+  final GlobalKey _drawerQuickStartKey = GlobalKey();
+  final GlobalKey _drawerGuidanceKey = GlobalKey();
+  final GlobalKey _drawerAdvancedKey = GlobalKey();
+
   BuildContext? _materialContext;
   bool _tutorialRunning = false;
+  bool _tutorialClosedEarly = false;
+  bool _missionChosenThisLaunch = false;
 
   TrackerDevice get _demoTutorialDevice {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -81,7 +90,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
       localName: '',
       isConnectable: false,
       serviceUuids: [],
-      rotatingMacCount: 0, // ← FIXED: required parameter added
+      rotatingMacCount: 0,
     );
   }
 
@@ -130,12 +139,19 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
       duration: const Duration(seconds: 1),
     )..repeat(reverse: true);
 
-    _bleSub = BleBridge.detections.listen((device) {
+    _bleSub = BleBridge.detections.listen((device) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await DeviceMarks.restoreUndesignated(device.stableKey);
+
       setState(() {
         final prev = _devicesBySig[device.signature];
-        _devicesBySig[device.signature] = prev == null
-            ? device
-            : prev.merge(device);
+        _devicesBySig[device.signature] = prev == null ? device : prev.merge(device);
+
+        _heldPeakRssi[device.signature] = max(
+          _heldPeakRssi[device.signature] ?? device.smoothedRssi,
+          device.smoothedRssi,
+        );
+        _heldPeakUntilMs[device.signature] = now + 10000;
       });
     });
 
@@ -145,97 +161,132 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     });
   }
 
-  void _showMissionPrompt() {
-    if (!mounted) return;
-    showDialog(
-      context: context,
+  Future<void> _showMissionPrompt() async {
+    final ctx = _materialContext;
+    if (ctx == null || !mounted) return;
+
+    await showDialog(
+      context: ctx,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Select Mission Profile',
-          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 12,
-                ),
-              ),
-              onPressed: () {
-                FiltersModel.apply(
-                  maxMainDistanceFt: 10.0,
-                  maxAdvancedDistanceFt: 40.0,
-                  minRssi: -100,
-                  filterByRssi: true,
-                  rssiThreshold: -70,
-                  sortMode: SortMode.recent,
-                );
-                Navigator.pop(ctx);
-              },
-              child: const Text(
-                'Package Mission\nI’m determining if there is a tag inside of a sealed package.',
-                textAlign: TextAlign.center,
-              ),
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+          contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          title: const Text(
+            'Package mission / search mission',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          ),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _missionCard(
+                  title: 'Sealed package search',
+                  body:
+                  'I\'m determining if there is a tag inside of a sealed package. Metal safe, cardboard, plastic, or another confined item.',
+                  onTap: () {
+                    FiltersModel.applyMissionPreset(MissionMode.packageSearch);
+                    if (mounted) {
+                      setState(() {
+                        _missionChosenThisLaunch = true;
+                      });
+                    }
+                    Navigator.of(ctx).pop();
+                  },
                 ),
-                padding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 12,
+                const SizedBox(height: 10),
+                _missionCard(
+                  title: 'Known-area tag hunt',
+                  body:
+                  'I\'m hunting for a possible tag in a known area such as a vehicle or backpack.',
+                  onTap: () {
+                    FiltersModel.applyMissionPreset(
+                      MissionMode.wideAreaHiddenTag,
+                    );
+                    if (mounted) {
+                      setState(() {
+                        _missionChosenThisLaunch = true;
+                      });
+                    }
+                    Navigator.of(ctx).pop();
+                  },
                 ),
-              ),
-              onPressed: () {
-                FiltersModel.apply(
-                  maxMainDistanceFt: 50.0,
-                  maxAdvancedDistanceFt: 200.0,
-                  minRssi: -100,
-                  filterByRssi: true,
-                  rssiThreshold: -90,
-                  sortMode: SortMode.recent,
-                );
-                Navigator.pop(ctx);
-              },
-              child: const Text(
-                'Hunting Mission\nI\'m hunting for a possible tag in a known area such as a vehicle or backpack.',
-                textAlign: TextAlign.center,
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  // 10-Second RSSI validity sorting
+  Widget _missionCard({
+    required String title,
+    required String body,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.grey.shade50,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                body,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  height: 1.35,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 10-Second RSSI validity sorting - Implemented from Android logic to stop jumping
   List<TrackerDevice> get devices {
     final now = DateTime.now();
-    final nowMs = now.millisecondsSinceEpoch;
-
-    // Refresh sort every 2 seconds so "last seen" updates smoothly
-    if (now.difference(_lastSortTime).inSeconds >= 2 || _displayOrder.isEmpty) {
+    if (now.difference(_lastSortTime).inSeconds >= 10 ||
+        _displayOrder.isEmpty) {
       final list = _devicesBySig.values.toList()
         ..sort((a, b) => b.smoothedRssi.compareTo(a.smoothedRssi));
       _displayOrder = list.map((d) => d.signature).toList();
       _lastSortTime = now;
     }
-
-    // Only show devices that have been seen for at least 10 seconds
     return _displayOrder
         .where(_devicesBySig.containsKey)
         .map((sig) => _devicesBySig[sig]!)
-        .where((d) => nowMs - d.firstSeenMs >= 10000) // ← 10 second hold
         .toList();
   }
 
@@ -307,11 +358,20 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
   Future<void> _checkFirstLaunchTutorial() async {
     final prefs = await SharedPreferences.getInstance();
     final seen = prefs.getBool('replay_tutorial') ?? false;
+
+    if (_materialContext == null) return;
+
+    setState(() {
+      _missionChosenThisLaunch = false;
+    });
+
+    // Force Mission Profiles as the very first selection upon launching the app
+    await _showMissionPrompt();
+
     if (seen) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showMissionPrompt());
       return;
     }
-    if (_materialContext == null) return;
+
     await _showTutorialStartPrompt();
   }
 
@@ -340,16 +400,17 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
           TextButton(
             onPressed: () {
               _markTutorialSeen();
-              if (_navigatorKey.currentState != null)
+              if (_navigatorKey.currentState != null) {
                 _navigatorKey.currentState!.pop();
-              _showMissionPrompt();
+              }
             },
             child: const Text('Skip'),
           ),
           ElevatedButton(
             onPressed: () {
-              if (_navigatorKey.currentState != null)
+              if (_navigatorKey.currentState != null) {
                 _navigatorKey.currentState!.pop();
+              }
               Future.delayed(const Duration(milliseconds: 250), () {
                 _markTutorialSeen();
                 _startQuickGuide();
@@ -400,23 +461,42 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     setState(() {
       pageIndex = 0;
       _tutorialRunning = true;
+      _tutorialClosedEarly = false;
     });
     await Future.delayed(const Duration(milliseconds: 600));
     await _runDistanceTutorial();
-    if (!mounted) return;
+    if (!mounted || _tutorialClosedEarly) {
+      setState(() => _tutorialRunning = false);
+      return;
+    }
     await _openSearchTutorialFromDemoTracker();
-    if (!mounted) return;
+    if (!mounted || _tutorialClosedEarly) {
+      setState(() => _tutorialRunning = false);
+      return;
+    }
     setState(() => pageIndex = 1);
     await Future.delayed(const Duration(milliseconds: 900));
     await _runClassifyTutorial();
-    if (!mounted) return;
+    if (!mounted || _tutorialClosedEarly) {
+      setState(() => _tutorialRunning = false);
+      return;
+    }
     await _runDrawerTutorial();
-    if (!mounted) return;
+    if (!mounted || _tutorialClosedEarly) {
+      setState(() => _tutorialRunning = false);
+      return;
+    }
     setState(() {
       pageIndex = 0;
       _tutorialRunning = false;
     });
-    _showMissionPrompt();
+  }
+
+  void _closeEntireTutorial() {
+    _tutorialClosedEarly = true;
+    if (_navigatorKey.currentState != null) {
+      _navigatorKey.currentState!.popUntil((route) => route.isFirst);
+    }
   }
 
   Future<void> _runDistanceTutorial() async {
@@ -426,14 +506,19 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         id: 'scan_button',
         title: 'Start and stop scanning',
         body: 'Press Scan here to stop and start device scanning.',
-        showSkip: false,
+      ),
+      tutorialTarget(
+        key: _trackerListKey,
+        id: 'distance_list',
+        title: 'Detected tags',
+        body: 'Undesignated tags show here with signal strength, UUID preview, and distance.',
+        yOffset: 110,
       ),
       tutorialTarget(
         key: _firstTrackerCardKey,
         id: 'open_tracker',
-        title: 'Open a tracker',
-        body: 'You can click a tag to open a more detailed page.',
-        showSkip: false,
+        title: 'Open a tag',
+        body: 'Tap a tag to open the detailed search page.',
       ),
     ]);
   }
@@ -458,8 +543,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         id: 'classify_tabs',
         title: 'Classification page',
         body:
-            'Trackers will be categorized here once you pick a category on the previous page.',
-        showSkip: false,
+        'Trackers will be categorized here once you pick a category on the previous page.',
       ),
     ]);
   }
@@ -474,7 +558,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         title: 'Filter options',
         body: 'Use these filter options to control what trackers are shown.',
         align: ContentAlign.bottom,
-        showSkip: false,
       ),
       tutorialTarget(
         key: _drawerReportsKey,
@@ -482,7 +565,6 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
         title: 'Reports page',
         body: 'Suspect tracker reports will show up here.',
         align: ContentAlign.bottom,
-        showSkip: false,
       ),
     ]);
     if (!mounted || _materialContext == null) return;
@@ -505,12 +587,12 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
     final trackedDevices = devices
         .where(
           (d) =>
-              d.isLikelyAirTag ||
-              d.isLikelyTile ||
-              d.isLikelySamsung ||
-              d.isPossibleAirTag ||
-              d.kind.contains('APPLE'),
-        )
+      d.isLikelyAirTag ||
+          d.isLikelyTile ||
+          d.isLikelySamsung ||
+          d.isPossibleAirTag ||
+          d.kind.contains('APPLE'),
+    )
         .toList();
     final tutorialTrackedDevices = _tutorialRunning
         ? <TrackerDevice>[_demoTutorialDevice]
@@ -527,17 +609,23 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
             .where((d) => d.rssi >= filters.minRssi)
             .where(
               (d) => !filters.filterByRssi || d.rssi >= filters.rssiThreshold,
-            )
+        )
             .toList();
         final nearDevices =
-            advancedDevices
-                .where((d) => d.distanceFeet <= filters.maxMainDistanceFt)
-                .where(
-                  (d) =>
-                      d.lastSeenMs >= _mainListClearTime.millisecondsSinceEpoch,
-                )
-                .toList()
-              ..sort((a, b) => a.distanceFeet.compareTo(b.distanceFeet));
+        advancedDevices
+            .where((d) => d.distanceFeet <= filters.maxMainDistanceFt)
+            .where(
+              (d) =>
+          d.lastSeenMs >= _mainListClearTime.millisecondsSinceEpoch,
+        )
+            .toList()
+          ..sort((a, b) => a.distanceFeet.compareTo(b.distanceFeet));
+
+        final missionLabel = !_missionChosenThisLaunch
+            ? 'Select mission'
+            : filters.missionMode == MissionMode.packageSearch
+            ? 'Package mission'
+            : 'Known-area hunt';
 
         return MaterialApp(
           navigatorKey: _navigatorKey,
@@ -552,6 +640,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
                   onRescan: toggleScan,
                   lastScanTime: lastScanTime,
                   scanStartTime: scanStartTime,
+                  onRefresh: _clearMainList,
                   scanButtonKey: _scanButtonKey,
                   trackerListKey: _trackerListKey,
                   firstTrackerCardKey: _firstTrackerCardKey,
@@ -570,9 +659,10 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
                   drawer: AppDrawer(
                     filtersTileKey: _drawerFiltersKey,
                     reportsTileKey: _drawerReportsKey,
-                    tutorialMode: _tutorialRunning,
-                    onReplayTutorial: () {
-                      // Close drawer first, then start tutorial
+                    quickStartTileKey: _drawerQuickStartKey,
+                    guidanceTileKey: _drawerGuidanceKey,
+                    advancedTileKey: _drawerAdvancedKey,
+                    onQuickStart: () {
                       _scaffoldKey.currentState?.closeDrawer();
                       Future.delayed(const Duration(milliseconds: 300), () {
                         if (mounted) _startQuickGuide();
@@ -632,7 +722,72 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
-                  body: SafeArea(bottom: false, child: pages[pageIndex]),
+                  body: Column(
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                        color: const Color(0xFFF6F5F8),
+                        child: Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(color: const Color(0xFFD8D4DE)),
+                              ),
+                              child: Text(
+                                missionLabel,
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF5A5562),
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scanning
+                                    ? const Color(0xFFE8F5E9)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: scanning
+                                      ? const Color(0xFF81C784)
+                                      : const Color(0xFFD8D4DE),
+                                ),
+                              ),
+                              child: Text(
+                                scanning ? 'Scanning active' : 'Scan stopped',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: scanning
+                                      ? const Color(0xFF2E7D32)
+                                      : const Color(0xFF5A5562),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(child: pages[pageIndex]),
+                    ],
+                  ),
                   bottomNavigationBar: SafeArea(
                     top: false,
                     child: BottomNavigationBar(

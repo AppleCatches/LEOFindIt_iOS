@@ -162,7 +162,7 @@ class _IdentificationPageState extends State<IdentificationPage> {
   String _ageLabel(int lastSeenMs) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final s = ((now - lastSeenMs) / 1000).clamp(0, 999999).toDouble();
-    if (s < 60) return "${s.toStringAsFixed(1)}s ago";
+    if (s < 60) return "${s.toInt()}s ago";
     final m = (s / 60).floor();
     final rs = (s - m * 60).floor();
     return "${m}m ${rs}s ago";
@@ -173,11 +173,11 @@ class _IdentificationPageState extends State<IdentificationPage> {
   }
 
   String _assetForDevice(TrackerDevice d) {
-    if (d.isLikelyAirTag) return 'assets/airtag.png';
+    if (d.isLikelyAirTag || d.isPossibleAirTag) return 'assets/airtag.png';
+    if (d.isLikelyFindMy) return 'assets/applefindmy.png';
     if (d.isLikelyTile) return 'assets/tile.png';
-    if (d.isLikelyFindMy) return 'assets/findmy.png';
-    if (d.isLikelySamsung) return 'assets/smarttag2.png';
-    return 'assets/leo_splash.png';
+    if (d.isLikelySamsung) return 'assets/smarttag.png';
+    return 'assets/unknown.png';
   }
 
   Widget _deviceCard(

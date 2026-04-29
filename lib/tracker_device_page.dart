@@ -10,7 +10,7 @@ class TrackerDevicePage extends StatelessWidget {
   String _ageLabel(int lastSeenMs) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final s = ((now - lastSeenMs) / 1000).clamp(0, 999999).toDouble();
-    if (s < 60) return "${s.toStringAsFixed(1)}s ago";
+    if (s < 60) return "${s.toInt()}s ago";
     final m = (s / 60).floor();
     final rs = (s - m * 60).floor();
     return "${m}m ${rs}s ago";
@@ -35,12 +35,11 @@ class TrackerDevicePage extends StatelessWidget {
         child: ListView(
           children: [
             Center(
-              child: Icon(_iconFor(device), size: 96),
+              child: buildTrackerImage(device, size: 96),
             ),
             const SizedBox(height: 24),
             _row('Type', device.displayName),
             _row('Kind', device.kind),
-            _row('MAC Address', device.displayMac),
             _row('Last seen', _ageLabel(device.lastSeenMs)),
             _row('Distance', '${device.distance.toStringAsFixed(2)} m'),
             _row('Distance (ft)', device.distanceFtLabel),
@@ -52,6 +51,7 @@ class TrackerDevicePage extends StatelessWidget {
             const Divider(),
             const Text(
               'Raw BLE Payload (hex)',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -60,6 +60,7 @@ class TrackerDevicePage extends StatelessWidget {
             const SizedBox(height: 8),
             SelectableText(
               device.rawFrame.isEmpty ? 'N/A' : device.rawFrame,
+              textAlign: TextAlign.center,
               style: const TextStyle(fontFamily: 'monospace'),
             ),
           ],
@@ -72,15 +73,19 @@ class TrackerDevicePage extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SizedBox(
-            width: 140,
+          Expanded(
             child: Text(
               '$label:',
+              textAlign: TextAlign.right,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          Expanded(child: Text(value)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(value, textAlign: TextAlign.left),
+          ),
         ],
       ),
     );
