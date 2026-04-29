@@ -1,12 +1,12 @@
 //For the hamburger menu feature
 import 'package:flutter/material.dart';
-
+import 'package:package_info_plus/package_info_plus.dart';
 import 'advanced_features_page.dart';
 import 'filters_page.dart';
 import 'guidance_page.dart';
 import 'reports_page.dart';
 
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   final GlobalKey? quickStartTileKey;
   final GlobalKey? guidanceTileKey;
   final GlobalKey? filtersTileKey;
@@ -14,6 +14,8 @@ class AppDrawer extends StatelessWidget {
   final GlobalKey? advancedTileKey;
 
   final VoidCallback? onQuickStart;
+  final bool tutorialMode;
+  final VoidCallback? onReplayTutorial;
 
   const AppDrawer({
     super.key,
@@ -23,7 +25,31 @@ class AppDrawer extends StatelessWidget {
     this.reportsTileKey,
     this.advancedTileKey,
     this.onQuickStart,
+    this.tutorialMode = false,
+    this.onReplayTutorial,
   });
+
+  @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersionInfo();
+  }
+
+  Future<void> _loadVersionInfo() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = info.version;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,16 +84,16 @@ class AppDrawer extends StatelessWidget {
                       ),
                     ),
                     _DrawerTile(
-                      tileKey: quickStartTileKey,
+                      tileKey: widget.quickStartTileKey,
                       icon: Icons.play_circle_fill_rounded,
                       title: 'Quick Start',
                       onTap: () {
                         Navigator.pop(context);
-                        onQuickStart?.call();
+                        widget.onQuickStart?.call();
                       },
                     ),
                     _DrawerTile(
-                      tileKey: guidanceTileKey,
+                      tileKey: widget.guidanceTileKey,
                       icon: Icons.shield_outlined,
                       title: 'LEO Guidance',
                       onTap: () {
@@ -95,7 +121,7 @@ class AppDrawer extends StatelessWidget {
                       ),
                     ),
                     _DrawerTile(
-                      tileKey: filtersTileKey,
+                      tileKey: widget.filtersTileKey,
                       icon: Icons.tune_rounded,
                       title: 'Filters',
                       onTap: () {
@@ -109,7 +135,7 @@ class AppDrawer extends StatelessWidget {
                       },
                     ),
                     _DrawerTile(
-                      tileKey: reportsTileKey,
+                      tileKey: widget.reportsTileKey,
                       icon: Icons.description_outlined,
                       title: 'Reports',
                       onTap: () {
@@ -123,7 +149,7 @@ class AppDrawer extends StatelessWidget {
                       },
                     ),
                     _DrawerTile(
-                      tileKey: advancedTileKey,
+                      tileKey: widget.advancedTileKey,
                       icon: Icons.admin_panel_settings_outlined,
                       title: 'Advanced Features',
                       onTap: () {
@@ -144,7 +170,7 @@ class AppDrawer extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(22, 10, 22, 18),
                 child: Text(
-                  'Version 1.0.0+1',
+                  'Version $_appVersion',
                   textAlign: TextAlign.left,
                   style: TextStyle(
                     fontFamily: 'Inter',

@@ -55,6 +55,17 @@ class TrackerDevice {
     );
   }
 
+  String get stableKey => signature;
+  double get distanceUiM => distanceFeet / 3.28084;
+  double get distanceFt => distanceFeet;
+  String get macTail4 {
+    final cleanMac = shortUuid.replaceAll(':', '').replaceAll('-', '');
+    if (cleanMac.isEmpty) return '----';
+    return cleanMac.length <= 4 ? cleanMac.toUpperCase() : cleanMac.substring(cleanMac.length - 4).toUpperCase();
+  }
+  bool get isLikelyFindMy => kind == 'FIND_MY' || kind == 'APPLE_DEVICE';
+  bool get mayBeRotatingDuplicate => rotatingMacCount > 1 && (isLikelyAirTag || isLikelyFindMy);
+
   double get distance => distanceFeet;
   double get distanceMeters => distanceFeet / 3.28084;
   String get distanceFtLabel =>
@@ -74,8 +85,8 @@ class TrackerDevice {
   }
 
   String get shortUuid {
-    if (signature.length <= 8) return signature;
-    return signature.substring(signature.length - 8);
+    if (signature.length <= 4) return signature;
+    return signature.substring(signature.length - 4);
   }
 
   String get displayMac => shortUuid;
@@ -94,15 +105,12 @@ class TrackerDevice {
   }
 
   String get displayName {
-    final customName = DeviceMarks.getName(signature);
-    if (customName != null && customName.isNotEmpty) return customName;
-
     if (isLikelyAirTag || isPossibleAirTag) {
       return 'Apple AirTag';
     }
 
     if (kind == 'APPLE_DEVICE') {
-      return 'Undesignated Device'; // ← changed as requested
+      return 'Undesignated Device';
     }
 
     if (isLikelyTile) return 'Life360 Tile';

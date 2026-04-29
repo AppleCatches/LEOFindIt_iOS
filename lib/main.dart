@@ -520,7 +520,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
       valueListenable: FiltersModel.notifier,
       builder: (_, filters, __) {
         final unmarkedDevices = devices
-            .where((d) => DeviceMarks.getMark(d.signature) == null)
+            .where((d) => DeviceMarks.get(d.stableKey) == DeviceMark.undesignated)
             .toList();
         final advancedDevices = unmarkedDevices
             .where((d) => d.distanceFeet <= filters.maxAdvancedDistanceFt)
@@ -547,16 +547,11 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
               _materialContext = materialContext;
               final pages = [
                 DistancePage(
-                  nearDevices: _tutorialRunning
-                      ? tutorialTrackedDevices
-                      : nearDevices,
-                  allTrackedDevices: advancedDevices,
+                  devices: _tutorialRunning ? tutorialTrackedDevices : nearDevices,
                   scanning: scanning,
                   onRescan: toggleScan,
                   lastScanTime: lastScanTime,
                   scanStartTime: scanStartTime,
-                  scanCountdownLabel: scanTimeLabel,
-                  onRefresh: _clearMainList,
                   scanButtonKey: _scanButtonKey,
                   trackerListKey: _trackerListKey,
                   firstTrackerCardKey: _firstTrackerCardKey,
@@ -565,7 +560,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
                 ),
                 IdentificationPage(
                   devices: _tutorialRunning ? tutorialTrackedDevices : devices,
-                  classifyTabsKey: _classifyTabsKey,
+                  identifyTabsKey: _classifyTabsKey,
                 ),
               ];
               return FadeTransition(
@@ -656,7 +651,7 @@ class _LeoFindItState extends State<LeoFindIt> with TickerProviderStateMixin {
                         ),
                         BottomNavigationBarItem(
                           icon: Icon(Icons.list_alt),
-                          label: 'Classification',
+                          label: 'Classified Tags',
                         ),
                       ],
                     ),

@@ -1,7 +1,7 @@
 name: leo_find_it
 description: A BLE tracker scanner
 publish_to: "none"
-version: 1.0.0+1
+version: 1.0.0+7
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -19,6 +19,7 @@ dependencies:
   tutorial_coach_mark: ^1.2.11
   shared_preferences: ^2.2.3
   url_launcher: ^6.3.0
+  package_info_plus: ^9.0.1
 
 flutter:
   uses-material-design: true

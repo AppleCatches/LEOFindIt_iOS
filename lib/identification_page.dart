@@ -226,7 +226,7 @@ class _IdentificationPageState extends State<IdentificationPage> {
                     ),
                     const SizedBox(height: 4),
                     Text('UUID: …${d.shortUuid}'),
-                    Text('MAC last 4: ${d.macTail4}'),
+                    // Text('MAC last 4: ${d.macTail4}'),
                     const SizedBox(height: 6),
                     Text(
                       'Distance: ${d.distanceFt.toStringAsFixed(1)} ft',

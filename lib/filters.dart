@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 enum SortMode {
   strongestHold,
   distanceAsc,
+  recent,
 }
 
 enum MissionMode {
@@ -15,12 +16,18 @@ class FiltersState {
   final int rssiThreshold;
   final SortMode sortMode;
   final MissionMode missionMode;
+  final double maxMainDistanceFt;
+  final double maxAdvancedDistanceFt;
+  final int minRssi;
 
   const FiltersState({
     required this.filterByRssi,
     required this.rssiThreshold,
     required this.sortMode,
     required this.missionMode,
+    this.maxMainDistanceFt = 50.0,
+    this.maxAdvancedDistanceFt = 200.0,
+    this.minRssi = -100,
   });
 
   FiltersState copyWith({
@@ -28,12 +35,18 @@ class FiltersState {
     int? rssiThreshold,
     SortMode? sortMode,
     MissionMode? missionMode,
+    double? maxMainDistanceFt,
+    double? maxAdvancedDistanceFt,
+    int? minRssi,
   }) {
     return FiltersState(
       filterByRssi: filterByRssi ?? this.filterByRssi,
       rssiThreshold: rssiThreshold ?? this.rssiThreshold,
       sortMode: sortMode ?? this.sortMode,
       missionMode: missionMode ?? this.missionMode,
+      maxMainDistanceFt: maxMainDistanceFt ?? this.maxMainDistanceFt,
+      maxAdvancedDistanceFt: maxAdvancedDistanceFt ?? this.maxAdvancedDistanceFt,
+      minRssi: minRssi ?? this.minRssi,
     );
   }
 }
@@ -86,5 +99,24 @@ class FiltersModel {
         );
         break;
     }
+  }
+
+  static void apply({
+    required double maxMainDistanceFt,
+    required double maxAdvancedDistanceFt,
+    required int minRssi,
+    required bool filterByRssi,
+    required int rssiThreshold,
+    required SortMode sortMode,
+  }) {
+    notifier.value = FiltersState(
+      filterByRssi: filterByRssi,
+      rssiThreshold: rssiThreshold,
+      sortMode: sortMode,
+      missionMode: notifier.value.missionMode,
+      maxMainDistanceFt: maxMainDistanceFt,
+      maxAdvancedDistanceFt: maxAdvancedDistanceFt,
+      minRssi: minRssi,
+    );
   }
 }

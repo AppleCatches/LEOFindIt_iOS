@@ -336,12 +336,14 @@ class _DistancePageState extends State<DistancePage> {
                                           color: Colors.grey.shade700,
                                         ),
                                       ),
+                                      /*
                                       Text(
                                         'MAC last 4: ${d.macTail4}',
                                         style: TextStyle(
                                           color: Colors.grey.shade700,
                                         ),
                                       ),
+                                      */
                                       if (mark == DeviceMark.suspect) ...[
                                         const SizedBox(height: 4),
                                         Text(
