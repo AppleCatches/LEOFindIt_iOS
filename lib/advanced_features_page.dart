@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+
 import 'device_marks.dart';
 import 'hidden_tags_page.dart';
-/*
+
 class AdvancedFeaturesPage extends StatelessWidget {
   const AdvancedFeaturesPage({super.key});
 
   Future<void> _confirmAndRun(
-    BuildContext context, {
-    required String title,
-    required String body,
-    required Future<void> Function() action,
-  }) async {
+      BuildContext context, {
+        required String title,
+        required String body,
+        required Future<void> Function() action,
+      }) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -32,9 +33,9 @@ class AdvancedFeaturesPage extends StatelessWidget {
     if (ok != true) return;
     await action();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Advanced cleanup complete.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Advanced cleanup complete.')),
+    );
   }
 
   @override
@@ -43,7 +44,10 @@ class AdvancedFeaturesPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           'Advanced Features',
-          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w800),
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
       body: ListView(
@@ -57,7 +61,9 @@ class AdvancedFeaturesPage extends StatelessWidget {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const HiddenTagsPage()),
+                MaterialPageRoute(
+                  builder: (_) => const HiddenTagsPage(),
+                ),
               );
             },
           ),
@@ -83,7 +89,7 @@ class AdvancedFeaturesPage extends StatelessWidget {
               context,
               title: 'Clear all nonsuspect tags?',
               body:
-                  'This removes every Nonsuspect designation saved in the app.',
+              'This removes every Nonsuspect designation saved in the app.',
               action: () => DeviceMarks.clearByMark(DeviceMark.nonsuspect),
             ),
           ),
@@ -108,7 +114,7 @@ class AdvancedFeaturesPage extends StatelessWidget {
               context,
               title: 'Clear all designated tags?',
               body:
-                  'This removes all saved Friendly, Nonsuspect, and Suspect designations.',
+              'This removes all saved Friendly, Nonsuspect, and Suspect designations.',
               action: () => DeviceMarks.clear(),
             ),
           ),
@@ -185,13 +191,19 @@ class _ActionCard extends StatelessWidget {
         leading: Icon(icon),
         title: Text(
           title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
             subtitle,
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade700,
+            ),
           ),
         ),
         trailing: const Icon(Icons.chevron_right_rounded),
@@ -199,4 +211,3 @@ class _ActionCard extends StatelessWidget {
     );
   }
 }
-*/

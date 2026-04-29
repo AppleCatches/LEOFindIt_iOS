@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 
-/// Creates a nice-looking tutorial target for TutorialCoachMark
+// Quick start tutorial made for new users Implemented in main with specific text
+
 TargetFocus tutorialTarget({
   required GlobalKey key,
   required String id,
@@ -9,33 +10,32 @@ TargetFocus tutorialTarget({
   required String body,
   ContentAlign align = ContentAlign.bottom,
   double yOffset = 0,
-  bool showSkip = true,
+  bool showSkip = false,
+  bool showClose = true,
+  bool isLastStep = false,
+  VoidCallback? onCloseAll,
 }) {
   return TargetFocus(
     identify: id,
     keyTarget: key,
-    alignSkip: Alignment.topRight,
     contents: [
       TargetContent(
-        align: align,
+        align: yOffset == 0 ? align : ContentAlign.custom,
         customPosition: yOffset == 0
             ? null
-            : CustomTargetContentPosition(top: yOffset),
+            : CustomTargetContentPosition(
+          top: yOffset,
+        ),
         builder: (context, controller) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+          return Material(
+            color: Colors.transparent,
             child: Container(
-              padding: const EdgeInsets.all(20),
+              constraints: const BoxConstraints(maxWidth: 320),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 12,
-                    offset: Offset(0, 6),
-                  ),
-                ],
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade300),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -44,38 +44,43 @@ TargetFocus tutorialTarget({
                   Text(
                     title,
                     style: const TextStyle(
-                      color: Colors.black,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
                       fontFamily: 'Inter',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text(
                     body,
                     style: const TextStyle(
-                      color: Colors.black87,
-                      fontSize: 16,
                       fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      // Skip button is intentionally disabled after the user starts the guide
-                      /*
                       if (showSkip)
                         TextButton(
-                          onPressed: controller.skip,
+                          onPressed: onCloseAll ?? controller.skip,
                           child: const Text('Skip'),
                         ),
-                      */
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: controller.next,
-                        child: const Text('Next'),
-                      ),
+                      if (showClose)
+                        TextButton(
+                          onPressed: onCloseAll ?? controller.skip,
+                          child: const Text('Close'),
+                        ),
+                      if (!isLastStep) ...[
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: controller.next,
+                          child: const Text('Next'),
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -86,65 +91,4 @@ TargetFocus tutorialTarget({
       ),
     ],
   );
-}
-
-/// Blinks / pulses a widget when tutorial mode is active (used in AppDrawer)
-class TutorialBlinker extends StatefulWidget {
-  final Widget child;
-  final bool isTutorialMode;
-
-  const TutorialBlinker({
-    super.key,
-    required this.child,
-    required this.isTutorialMode,
-  });
-
-  @override
-  State<TutorialBlinker> createState() => _TutorialBlinkerState();
-}
-
-class _TutorialBlinkerState extends State<TutorialBlinker>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 650),
-    );
-    _anim = Tween<double>(
-      begin: 0.4,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-
-    if (widget.isTutorialMode) {
-      _ctrl.repeat(reverse: true);
-    }
-  }
-
-  @override
-  void didUpdateWidget(TutorialBlinker oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isTutorialMode && !_ctrl.isAnimating) {
-      _ctrl.repeat(reverse: true);
-    } else if (!widget.isTutorialMode && _ctrl.isAnimating) {
-      _ctrl.reset();
-      _ctrl.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!widget.isTutorialMode) return widget.child;
-    return FadeTransition(opacity: _anim, child: widget.child);
-  }
 }

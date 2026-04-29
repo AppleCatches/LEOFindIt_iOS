@@ -1,7 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'reports_store.dart';
 import 'app_tutorial.dart';
@@ -9,7 +9,10 @@ import 'app_tutorial.dart';
 class ReportsPage extends StatefulWidget {
   final bool tutorialMode;
 
-  const ReportsPage({super.key, this.tutorialMode = false});
+  const ReportsPage({
+    super.key,
+    this.tutorialMode = false,
+  });
 
   @override
   State<ReportsPage> createState() => _ReportsPageState();
@@ -24,6 +27,7 @@ class _ReportsPageState extends State<ReportsPage> {
   @override
   void initState() {
     super.initState();
+
     if (widget.tutorialMode) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await Future.delayed(const Duration(milliseconds: 350));
@@ -34,7 +38,9 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Future<bool> _showCoach(List<TargetFocus> targets) async {
     if (!mounted || targets.isEmpty) return false;
+
     final completer = Completer<bool>();
+
     final coach = TutorialCoachMark(
       targets: targets,
       colorShadow: Colors.black,
@@ -49,6 +55,7 @@ class _ReportsPageState extends State<ReportsPage> {
         return true;
       },
     );
+
     coach.show(context: context);
     return completer.future;
   }
@@ -59,11 +66,13 @@ class _ReportsPageState extends State<ReportsPage> {
         key: _reportsAreaKey,
         id: 'reports_area',
         title: 'Reports',
-        body:
-            'Suspect tracker reports will show up here and can be saved to your device.',
+        body: 'Suspect tracker reports will show up here and can be saved to your device.',
       ),
     ]);
-    if (mounted) Navigator.pop(context);
+
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -75,44 +84,6 @@ class _ReportsPageState extends State<ReportsPage> {
   void _dismissFeedback() {
     setState(() {
       _savedReportId = null;
-      _feedbackCtrl.clear();
-    });
-  }
-
-  Future<void> _submitGeneralFeedbackSMS() async {
-    if (_feedbackCtrl.text.trim().isEmpty) return;
-
-    final body = "LeoFindIt Feedback:\n${_feedbackCtrl.text}";
-    final uri = Uri.parse("sms:9383686348?body=${Uri.encodeComponent(body)}");
-
-    try {
-      await launchUrl(uri);
-    } catch (e) {
-      // Ignore if simulator lacks SMS
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _feedbackCtrl.clear();
-    });
-  }
-
-  Future<void> _submitGeneralFeedbackEmail() async {
-    if (_feedbackCtrl.text.trim().isEmpty) return;
-
-    final body = "LeoFindIt Feedback:\n${_feedbackCtrl.text}";
-    final uri = Uri.parse(
-      "mailto:feedback@leofindit.com?subject=LeoFindIt Feedback&body=${Uri.encodeComponent(body)}",
-    );
-
-    try {
-      await launchUrl(uri);
-    } catch (e) {
-      // Ignore if simulator lacks Email
-    }
-
-    if (!mounted) return;
-    setState(() {
       _feedbackCtrl.clear();
     });
   }
@@ -156,12 +127,14 @@ class _ReportsPageState extends State<ReportsPage> {
     );
 
     if (alsoDeleteFiles == null) return;
+
     await ReportsStore.clearAll(alsoDeleteExportedFiles: alsoDeleteFiles);
     if (!mounted) return;
+
     _dismissFeedback();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Cleared all reports.")));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Cleared all reports.")),
+    );
   }
 
   @override
@@ -192,32 +165,32 @@ class _ReportsPageState extends State<ReportsPage> {
                 )
               else
                 ...reports.map((r) {
-                  final short = r.signature.length >= 4
-                      ? r.signature.substring(r.signature.length - 4)
+                  final short = r.signature.length >= 8
+                      ? r.signature.substring(0, 8)
                       : r.signature;
 
-                  final hasAnyExport =
-                      ((r.exportedUriJson ?? "").isNotEmpty) ||
+                  final hasAnyExport = ((r.exportedUriJson ?? "").isNotEmpty) ||
                       ((r.exportedUriTxt ?? "").isNotEmpty);
 
                   return Card(
                     child: ListTile(
-                      title: Text("${r.kind} • UUID: ...$short"),
+                      title: Text("${r.kind} • $short"),
                       subtitle: Text(
-                        "${r.createdAt} • RSSI ${r.rssi} dBm • ${(r.distanceFeet).toStringAsFixed(1)} ft",
+                        "${r.createdAt} • RSSI ${r.rssi} dBm • ${(r.distanceMeters * 3.28084).toStringAsFixed(1)} ft",
                       ),
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) async {
                           if (v == "save_txt") {
                             try {
-                              await ReportsStore.saveCaseReportTxtToDownloads(
-                                r,
-                              );
+                              await ReportsStore.saveCaseReportTxtToDownloads(r);
                               if (!mounted) return;
+
+                              setState(() => _savedReportId = r.reportId);
+
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    "Saved Case Report to Downloads/LeoFindIt (.txt)",
+                                    "Saved Case Report to Downloads/LEOFindIt (.txt)",
                                   ),
                                 ),
                               );
@@ -228,14 +201,18 @@ class _ReportsPageState extends State<ReportsPage> {
                               );
                             }
                           }
+
                           if (v == "save_json") {
                             try {
                               await ReportsStore.saveRawJsonToDownloads(r);
                               if (!mounted) return;
+
+                              setState(() => _savedReportId = r.reportId);
+
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    "Saved Raw Evidence to Downloads/LeoFindIt (.json)",
+                                    "Saved Raw Evidence to Downloads/LEOFindIt (.json)",
                                   ),
                                 ),
                               );
@@ -246,25 +223,25 @@ class _ReportsPageState extends State<ReportsPage> {
                               );
                             }
                           }
+
                           if (v == "delete_local") {
                             await ReportsStore.deleteReport(r.reportId);
                             if (!mounted) return;
-                            if (_savedReportId == r.reportId)
-                              _dismissFeedback();
+                            if (_savedReportId == r.reportId) _dismissFeedback();
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text("Report removed from app."),
                               ),
                             );
                           }
+
                           if (v == "delete_both") {
                             await ReportsStore.deleteReport(
                               r.reportId,
                               alsoDeleteExportedFiles: true,
                             );
                             if (!mounted) return;
-                            if (_savedReportId == r.reportId)
-                              _dismissFeedback();
+                            if (_savedReportId == r.reportId) _dismissFeedback();
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(
@@ -299,71 +276,60 @@ class _ReportsPageState extends State<ReportsPage> {
                   );
                 }),
 
-              const SizedBox(height: 18),
-              const Divider(),
-              const SizedBox(height: 10),
-              const Text(
-                'Submit General Feedback',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'I opt in to SMS with LeoFindIt developers only regarding the matter in my feedback. I can stop anytime to opt out.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.blueGrey,
-                  fontStyle: FontStyle.italic,
+              // Feedback prompt after saving (TXT or JSON)
+              if (_savedReportId != null) ...[
+                const SizedBox(height: 18),
+                const Divider(),
+                const SizedBox(height: 10),
+                const Text(
+                  "Please let the software team know what happened in this case, including any feedback. (No PII or sensitive info!)",
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _feedbackCtrl,
-                minLines: 3,
-                maxLines: 6,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText:
-                      "What happened? Any scanner/UI issues? Steps to reproduce?",
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _feedbackCtrl,
+                  minLines: 3,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText:
+                    "What happened? Any scanner/UI issues? Steps to reproduce?",
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 54,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.email),
-                        label: const Text('Email'),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: _submitGeneralFeedbackEmail,
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _dismissFeedback,
+                        child: const Text("No thanks"),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: SizedBox(
-                      height: 54,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.sms),
-                        label: const Text('Send SMS'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: _submitGeneralFeedbackSMS,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final txt = _feedbackCtrl.text.trim();
+                          if (txt.isEmpty) {
+                            _dismissFeedback();
+                            return;
+                          }
+
+                          await ReportsStore.updateFeedback(_savedReportId!, txt);
+
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Feedback saved.")),
+                          );
+
+                          _dismissFeedback();
+                        },
+                        child: const Text("Save feedback"),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ]
             ],
           ),
         );
